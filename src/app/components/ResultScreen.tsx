@@ -37,7 +37,7 @@ function VerdictDot({ semaphore }: { semaphore: EvaluationResult["semaphore"] })
   const celebratory = semaphore === "green";
 
   return (
-    <div className="relative mx-auto flex w-28 items-center justify-center">
+    <div className="relative mx-auto flex w-40 items-center justify-center">
       {celebratory &&
         CONFETTI.map((c, i) => (
           <span
@@ -57,7 +57,7 @@ function VerdictDot({ semaphore }: { semaphore: EvaluationResult["semaphore"] })
           />
         ))}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/raisemyportfolio.svg" alt="raisemyportfolio.com" className="relative h-auto w-24" />
+      <img src="/raisemyportfolio.svg" alt="raisemyportfolio.com" className="relative h-auto w-36" />
     </div>
   );
 }
@@ -260,17 +260,6 @@ export function ResultScreen({
           </div>
         )}
 
-        {previousResult && (
-          <div className="w-full rounded-xl bg-[#eef3ee] px-4 py-3 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-green">
-              {t.result.rescanComparisonTitle}
-            </p>
-            <p className="mt-1 text-[15px] font-medium text-ink">
-              {t.result.rescanScoreChanged(compositeScore(previousResult), compositeScore(result))}
-            </p>
-          </div>
-        )}
-
         {/* Hero verdict */}
         <div className="w-full text-center">
           <VerdictDot semaphore={allResolved ? "green" : result.semaphore} />
@@ -302,6 +291,16 @@ export function ResultScreen({
           )}
           {remainingCount > 0 && (
             <p className="label-mono mt-4">{t.result.problemsCount(remainingCount)}</p>
+          )}
+          {previousResult && (
+            <div className="mt-4 w-full rounded-xl bg-[#eef3ee] px-4 py-3 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-green">
+                {t.result.rescanComparisonTitle}
+              </p>
+              <p className="mt-1 text-[15px] font-medium text-ink">
+                {t.result.rescanScoreChanged(compositeScore(previousResult), compositeScore(result))}
+              </p>
+            </div>
           )}
         </div>
 

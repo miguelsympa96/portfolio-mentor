@@ -1,10 +1,18 @@
-import { google } from "googleapis";
+import { google, sheets_v4 } from "googleapis";
 
 const SHEET_NAME = process.env.GOOGLE_SHEETS_TAB_NAME || "Feedback";
 const EVALUATIONS_SHEET_NAME = process.env.GOOGLE_SHEETS_EVALUATIONS_TAB_NAME || "Evaluations";
 const WAITLIST_SHEET_NAME = process.env.GOOGLE_SHEETS_WAITLIST_TAB_NAME || "Waitlist";
 
-function getAuth() {
+// Reused across requests on warm serverless invocations so the JWT's
+// internal access token (valid ~1h) gets reused instead of every call
+// paying for a fresh OAuth handshake with Google before it can talk to
+// the Sheets API.
+let cachedSheetsClient: sheets_v4.Sheets | null = null;
+
+function getSheetsClient(): sheets_v4.Sheets {
+  if (cachedSheetsClient) return cachedSheetsClient;
+
   const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
   const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
@@ -12,11 +20,14 @@ function getAuth() {
     throw new Error("Faltan credenciales de Google Sheets en el servidor.");
   }
 
-  return new google.auth.JWT({
+  const auth = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
+
+  cachedSheetsClient = google.sheets({ version: "v4", auth });
+  return cachedSheetsClient;
 }
 
 async function appendRow(sheetName: string, row: (string | number)[]): Promise<void> {
@@ -25,7 +36,7 @@ async function appendRow(sheetName: string, row: (string | number)[]): Promise<v
     throw new Error("Falta GOOGLE_SHEETS_SPREADSHEET_ID en el servidor.");
   }
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
+  const sheets = getSheetsClient();
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
@@ -58,7 +69,7 @@ export async function getEvaluationScores(): Promise<{ seniority: string; score:
     throw new Error("Falta GOOGLE_SHEETS_SPREADSHEET_ID en el servidor.");
   }
 
-  const sheets = google.sheets({ version: "v4", auth: getAuth() });
+  const sheets = getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${EVALUATIONS_SHEET_NAME}!A1:B`,

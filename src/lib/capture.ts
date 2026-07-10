@@ -162,13 +162,16 @@ export async function captureUrlScreenshots(
     // Mobile capture of the same already-loaded home page: resizing the
     // viewport lets responsive CSS reflow instantly (Chromium re-evaluates
     // media queries on resize), so this is a real rendered mobile view
-    // without paying for a second full navigation.
+    // without paying for a second full navigation. Deliberately viewport-only
+    // (not fullPage): the hero/first-impression is where responsive breakage
+    // matters most and where it was actually found in QA, and a fixed
+    // 390x844 frame is a fraction of the vision tokens a full scrolled page
+    // would cost, this was measured as a meaningful chunk of Claude's
+    // per-request latency.
     try {
       await page.setViewportSize(MOBILE_VIEWPORT);
       await page.waitForTimeout(400);
-      const mobileShot = await resizeScreenshot(
-        await page.screenshot({ fullPage: true, type: "png" })
-      );
+      const mobileShot = await page.screenshot({ fullPage: false, type: "png" });
       images.push({
         mediaType: "image/png",
         base64: mobileShot.toString("base64"),

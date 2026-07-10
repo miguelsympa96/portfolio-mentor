@@ -309,6 +309,7 @@ function normalizeEvaluation(input: Record<string, unknown>) {
 }
 
 export async function POST(req: NextRequest) {
+  const requestStartedAt = Date.now();
   try {
     const ip = getClientIp(req);
     const limit = rateLimit(`evaluate:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
@@ -479,11 +480,31 @@ export async function POST(req: NextRequest) {
     // hints, not guarantees, so an occasional response drops a required
     // field or returns an empty array despite it. A retry resolves this in
     // practice far more often than it costs in latency.
+    //
+    // Production incident (2026-07-10): a single attempt took 134s, failed
+    // validation, and the unconditional retry below started a second call
+    // with only ~46s left in the 180s budget. Vercel killed the function
+    // mid-flight and returned its own plain-text timeout page instead of
+    // this route's JSON error, which the frontend can't parse. Guard every
+    // retry against the remaining budget so a doomed second attempt never
+    // starts, this route's own fast JSON error fires instead.
     const MAX_ATTEMPTS = 2;
+    const FUNCTION_BUDGET_MS = maxDuration * 1000;
+    const MIN_RETRY_BUDGET_MS = 90_000; // a call has measured as slow as ~170s
     let input: Record<string, unknown> | null = null;
     let lastIssue: string | null = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        const remaining = FUNCTION_BUDGET_MS - (Date.now() - requestStartedAt);
+        if (remaining < MIN_RETRY_BUDGET_MS) {
+          console.error(
+            `skipping evaluation retry, only ${remaining}ms left in the function budget`
+          );
+          break;
+        }
+      }
+
       const message = await anthropic.messages.create({
         model: "claude-sonnet-5",
         max_tokens: 4500,

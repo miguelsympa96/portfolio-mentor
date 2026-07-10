@@ -366,7 +366,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           ok: true,
           durationMs: Date.now() - startedAt,
-          images: captured.map((img) => ({
+          truncatedLinkCount: captured.truncatedLinkCount,
+          images: captured.images.map((img) => ({
             viewport: img.viewport,
             sourceUrl: img.sourceUrl,
             mediaType: img.mediaType,
@@ -395,10 +396,13 @@ export async function POST(req: NextRequest) {
 
     let capturedImages: CapturedImage[] = [];
     let usedFallback = false;
+    let truncatedLinkCount = 0;
 
     if (url) {
       try {
-        capturedImages = await captureUrlScreenshots(url);
+        const captured = await captureUrlScreenshots(url);
+        capturedImages = captured.images;
+        truncatedLinkCount = captured.truncatedLinkCount;
         if (capturedImages.length === 0) {
           throw new Error("No se pudo capturar contenido de la URL.");
         }
@@ -458,10 +462,14 @@ export async function POST(req: NextRequest) {
       url && usedFallback
         ? `No se pudo navegar automáticamente ${url}; se usan capturas subidas manualmente por el usuario.`
         : null,
+      url && !usedFallback && truncatedLinkCount > 0
+        ? `El portfolio tiene más páginas internas enlazadas de las que se pudieron capturar (${truncatedLinkCount} adicionales sin capturar). Las capturas adjuntas son solo una parte del portfolio completo: no des por hecho que viste todos los case studies del candidato, dilo explícitamente si es relevante para tu evaluación (por ejemplo, en curación).`
+        : null,
       "Evalúa el Modo AUDITORÍA, Capa 1 (tarjeta resumen), usando las capturas o el PDF adjuntos como única evidencia visual.",
       "TONO: escribe como un reclutador senior de verdad hablando en primera persona, directo y sin adornos corporativos — evita lenguaje de consultoría genérico. Sé honesto y contundente, no despiadado: nunca inventes contexto que no viste, y reconoce lo que sí funciona con la misma franqueza que lo que no. Ejemplo del tono buscado: en vez de 'Este proyecto carece de impacto medible', escribe 'No puedo saber si esto movió el negocio'.",
       "Para cada categoría y cada case study, incluye un 'fix' con 1-3 acciones accionables y específicas — nunca un consejo genérico tipo 'mejora la claridad'. Si el fix es un cambio de copy concreto, incluye la frase original citada tal cual y una propuesta de reemplazo que preserve el vocabulario y la voz del candidato. Si el problema es falta de impacto medible, recuerda que un diseñador rara vez es dueño de la métrica de negocio: antes de pedir una cifra, considera si el case study ya muestra un antes/después (menos pasos, un check que antes fallaba), una señal de proceso (un componente o decisión suya que el equipo adoptó) o una cita de usuario/stakeholder tras el lanzamiento, cualquiera de esas tres cuenta como evidencia real. Solo si NINGUNA de las tres existe, la acción debe pedir al candidato que reconstruya el dato (¿lo midió? ¿hay un proxy cualitativo?) y lo etiquete como Medido o Estimado — nunca una cifra fabricada.",
       "Los case studies son la parte más importante de un portfolio de diseño: identifica cada case study visible en las capturas o el PDF, en el orden actual en que aparecen, y da una recomendación concreta (mantener / reordenar / ampliar / cortar) con la razón específica. Si hay varios problemas distintos en el mismo case study, sepáralos en elementos individuales de 'fixes' en vez de fundirlos en una sola frase larga.",
+      "Para cada case study, revisa explícitamente si hay capturas o mockups del producto real (no solo texto o fotos del equipo): si las hay, evalúa su calidad visual como parte de craft (¿se ven pulidas y profesionales, con UI consistente y de alta fidelidad, o rotas, pixeladas, con placeholders tipo 'Lorem ipsum' o inconsistentes entre pantallas?) y cítalo con algo concreto que veas. Si un case study específico no tiene ninguna captura de producto en la evidencia que se te dio, dilo explícitamente como 'no veo capturas del producto para este case study en las imágenes disponibles' en vez de asumir que no existen en el portfolio real: puede que simplemente no se capturaron.",
       "Completa también 'strengths' (fortalezas reales y específicas, no nombres de categorías) y 'key_risks' (en primera persona de reclutador) — estos alimentan una sección de 'notas del reclutador', así que deben sonar como notas reales tomadas durante una revisión, no como resumen de categorías.",
       jobDescription
         ? `El candidato quiere aplicar a esta oferta específica:\n"""\n${jobDescription}\n"""\nAdemás de la Capa 1, completa job_fit comparando el portfolio contra los requisitos de esta oferta: nivel de fit, resumen, fortalezas alineadas y gaps concretos.`

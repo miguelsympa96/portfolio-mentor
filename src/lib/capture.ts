@@ -1,7 +1,7 @@
 import type { Browser, Page } from "playwright-core";
 import sharp from "sharp";
 
-const MAX_PAGES = 5; // home + up to 4 subpages
+const MAX_PAGES = 6; // home + up to 5 subpages, matching the rubric's own 3-5 case study ceiling
 const VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 }; // iPhone-class width, the most common mobile breakpoint
 const MAX_IMAGE_HEIGHT = 6000; // cap full-page screenshot height before sending to Claude
@@ -53,6 +53,26 @@ const SKIP_PATH_HINTS = [
   "behance.net",
 ];
 
+// Case studies are the highest-value pages by a wide margin, they're where
+// the product screenshots and the whole problem/process/outcome narrative
+// live, so they get first claim on the limited subpage budget. Generic
+// utility pages sort last since they rarely carry the visual evidence
+// Claude needs, and previously ate slots that should have gone to case
+// studies (a real production incident: a portfolio's /about and /builds
+// pages got captured while 3 of its 5 case studies never did).
+const PRIORITY_PATH_HINTS = ["case-study", "case_study", "casestudy", "/work/", "/project"];
+const DEPRIORITIZE_PATH_HINTS = ["about", "resume", "/cv", "blog", "services", "builds", "press", "speaking"];
+
+function linkPriorityRank(url: string): number {
+  const lower = url.toLowerCase();
+  if (PRIORITY_PATH_HINTS.some((hint) => lower.includes(hint))) return 0;
+  if (DEPRIORITIZE_PATH_HINTS.some((hint) => lower.includes(hint))) return 2;
+  return 1;
+}
+
+// Returns every valid internal link, sorted by priority rank (case studies
+// first), unsliced — the caller decides how many it can afford to capture
+// and how many were left on the table.
 async function discoverInternalLinks(
   page: Page,
   base: URL
@@ -62,23 +82,24 @@ async function discoverInternalLinks(
   );
 
   const seen = new Set<string>([base.toString()]);
-  const result: string[] = [];
+  const candidates: { url: string; index: number }[] = [];
 
-  for (const href of hrefs) {
+  hrefs.forEach((href, index) => {
     const abs = toAbsoluteUrl(href, base);
-    if (!abs) continue;
+    if (!abs) return;
     const u = new URL(abs);
-    if (u.origin !== base.origin) continue;
-    if (u.pathname === base.pathname) continue;
+    if (u.origin !== base.origin) return;
+    if (u.pathname === base.pathname) return;
     const lower = abs.toLowerCase();
-    if (SKIP_PATH_HINTS.some((hint) => lower.includes(hint))) continue;
-    if (seen.has(abs)) continue;
+    if (SKIP_PATH_HINTS.some((hint) => lower.includes(hint))) return;
+    if (seen.has(abs)) return;
     seen.add(abs);
-    result.push(abs);
-    if (result.length >= MAX_PAGES - 1) break;
-  }
+    candidates.push({ url: abs, index });
+  });
 
-  return result;
+  return candidates
+    .sort((a, b) => linkPriorityRank(a.url) - linkPriorityRank(b.url) || a.index - b.index)
+    .map((c) => c.url);
 }
 
 async function resizeScreenshot(buffer: Buffer): Promise<Buffer> {
@@ -136,9 +157,17 @@ async function launchBrowser(): Promise<Browser> {
   return localChromium.launch({ headless: true });
 }
 
+export interface CaptureResult {
+  images: CapturedImage[];
+  // How many additional internal links (beyond what MAX_PAGES allowed) were
+  // discovered but never captured. Surfaced to the prompt so Claude never
+  // implies it saw the whole portfolio when a page count cap cut it short.
+  truncatedLinkCount: number;
+}
+
 export async function captureUrlScreenshots(
   rawUrl: string
-): Promise<CapturedImage[]> {
+): Promise<CaptureResult> {
   const base = new URL(normalizeUrl(rawUrl));
   const browser = await launchBrowser();
   const images: CapturedImage[] = [];
@@ -184,7 +213,9 @@ export async function captureUrlScreenshots(
       // silent on responsiveness rather than guess when this is missing.
     }
 
-    const subLinks = await discoverInternalLinks(page, base);
+    const allLinks = await discoverInternalLinks(page, base);
+    const subLinks = allLinks.slice(0, MAX_PAGES - 1);
+    const truncatedLinkCount = allLinks.length - subLinks.length;
 
     for (const link of subLinks) {
       try {
@@ -204,7 +235,7 @@ export async function captureUrlScreenshots(
       }
     }
 
-    return images;
+    return { images, truncatedLinkCount };
   } finally {
     await browser.close();
   }

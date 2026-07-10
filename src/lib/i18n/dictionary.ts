@@ -39,6 +39,7 @@ export interface Dictionary {
     subtitle: string;
     steps: string[];
     longWait: string;
+    veryLongWait: string;
   };
   result: {
     mockBanner: string;

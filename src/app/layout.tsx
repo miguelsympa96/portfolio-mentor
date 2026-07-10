@@ -29,6 +29,9 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://raisemyportfolio.com"),
   title: TITLE,
   description: DESCRIPTION,
+  alternates: {
+    canonical: "https://raisemyportfolio.com",
+  },
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,

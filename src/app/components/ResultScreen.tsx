@@ -302,6 +302,13 @@ export function ResultScreen({
               </h1>
             </>
           )}
+          {result.jobFit && (
+            <span
+              className={`mt-4 inline-block rounded-full px-3 py-1 text-xs font-semibold ${JOB_FIT_BADGE[result.jobFit.level]}`}
+            >
+              {t.result.jobFit[result.jobFit.level]}
+            </span>
+          )}
           {remainingCount > 0 && (
             <p className="label-mono mt-4">{t.result.problemsCount(remainingCount)}</p>
           )}
@@ -442,12 +449,6 @@ export function ResultScreen({
               ))}
             </div>
           </div>
-        )}
-
-        {result.jobFit && (
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${JOB_FIT_BADGE[result.jobFit.level]}`}>
-            {t.result.jobFit[result.jobFit.level]}
-          </span>
         )}
 
         <InterviewPrepWaitlist seniority={seniority} />

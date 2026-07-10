@@ -104,9 +104,29 @@ function CompletionBanner({ name, impact, t }: { name: string; impact: number; t
   );
 }
 
-function NextButton({ onClick, label }: { onClick: () => void; label: string }) {
+function NextButton({
+  onClick,
+  label,
+  onBack,
+  backLabel,
+}: {
+  onClick: () => void;
+  label: string;
+  onBack?: () => void;
+  backLabel?: string;
+}) {
   return (
-    <div className="mt-6 flex justify-end">
+    <div className={`mt-6 flex items-center ${onBack ? "justify-between" : "justify-end"}`}>
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-[13px] font-medium text-ink-42 hover:text-ink"
+        >
+          <ArrowLeftIcon className="size-3" />
+          {backLabel}
+        </button>
+      )}
       <button
         type="button"
         onClick={onClick}
@@ -226,21 +246,9 @@ export function ImproveFlow({
           <p className="label-mono mb-3">{t.improve.heading}</p>
           <div className="flex items-center justify-between text-[12px] text-ink-42">
             <span>{t.improve.stepOf(stepIndex + 1, visibleSteps.length)}</span>
-            <div className="flex items-center gap-3">
-              <span key={runningScore} className="score-flash font-mono font-medium text-ink">
-                {runningScore}/100
-              </span>
-              {stepIndex > 0 && step.kind !== "done" && (
-                <button
-                  type="button"
-                  onClick={goBack}
-                  className="inline-flex items-center gap-1 font-medium text-ink-42 hover:text-ink"
-                >
-                  <ArrowLeftIcon className="size-3" />
-                  {t.improve.back}
-                </button>
-              )}
-            </div>
+            <span key={runningScore} className="score-flash font-mono font-medium text-ink">
+              {runningScore}/100
+            </span>
           </div>
           <div className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-ink-border">
             <div
@@ -278,7 +286,12 @@ export function ImproveFlow({
                   </ul>
                 </div>
               </div>
-              <NextButton onClick={goNext} label={t.improve.next} />
+              <NextButton
+                onClick={goNext}
+                label={t.improve.next}
+                onBack={stepIndex > 0 ? goBack : undefined}
+                backLabel={t.improve.back}
+              />
             </>
           )}
 
@@ -316,7 +329,12 @@ export function ImproveFlow({
                   <CompletionBanner name={currentName} impact={currentEstimate?.impact ?? 0} t={t} />
                 )}
 
-                <NextButton onClick={goNext} label={t.improve.next} />
+                <NextButton
+                  onClick={goNext}
+                  label={t.improve.next}
+                  onBack={stepIndex > 0 ? goBack : undefined}
+                  backLabel={t.improve.back}
+                />
               </>
             );
           })()}
@@ -369,7 +387,12 @@ export function ImproveFlow({
                   <CompletionBanner name={currentName} impact={currentEstimate?.impact ?? 0} t={t} />
                 )}
 
-                <NextButton onClick={goNext} label={t.improve.next} />
+                <NextButton
+                  onClick={goNext}
+                  label={t.improve.next}
+                  onBack={stepIndex > 0 ? goBack : undefined}
+                  backLabel={t.improve.back}
+                />
               </>
             );
           })()}

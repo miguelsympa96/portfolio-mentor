@@ -42,7 +42,7 @@ export const fr: Dictionary = {
   },
   loading: {
     heading: "Analyse de ton portfolio en cours...",
-    subtitle: "Cela peut prendre jusqu'à une minute.",
+    subtitle: "Cela peut prendre jusqu'à 2-3 minutes.",
     steps: [
       "Ouverture de ton portfolio et parcours de chaque section...",
       "Chronométrage de ta première impression (0 à 10s)...",
@@ -54,6 +54,7 @@ export const fr: Dictionary = {
       "Rédaction de ton verdict...",
     ],
     longWait: "Les portfolios avec plusieurs études de cas prennent un peu plus de temps, on y travaille encore.",
+    veryLongWait: "Toujours en cours, cela peut prendre jusqu'à 3 minutes au total, ne ferme pas cet onglet.",
   },
   result: {
     mockBanner: "Mode démo : configure ANTHROPIC_API_KEY pour une évaluation réelle.",

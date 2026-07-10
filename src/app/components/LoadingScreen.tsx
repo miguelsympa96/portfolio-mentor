@@ -4,15 +4,19 @@ import { useEffect, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 
 // Gaps between steps (ms), one shorter than the step count — spread across a
-// realistic total wait (real evaluation runs ~20-45s) so steps don't all
-// finish in the first 12s and then sit stalled on the last one.
+// realistic total wait so steps don't all finish in the first 12s and then
+// sit stalled on the last one. The real call to Claude can take 60-170s
+// (a validation retry doubles it occasionally), so there are two reassurance
+// tiers rather than one, otherwise the same "still working" message sits
+// unchanged for over a minute and starts reading as actually stuck.
 const STEP_GAPS_MS = [1800, 2200, 2600, 3000, 3400, 3800, 4200];
 const LONG_WAIT_MS = 14000;
+const VERY_LONG_WAIT_MS = 45000;
 
 export function LoadingScreen() {
   const { t } = useLocale();
   const [stepIndex, setStepIndex] = useState(0);
-  const [longWait, setLongWait] = useState(false);
+  const [waitTier, setWaitTier] = useState<0 | 1 | 2>(0);
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -21,7 +25,8 @@ export function LoadingScreen() {
       cumulative += gap;
       timers.push(setTimeout(() => setStepIndex(i + 1), cumulative));
     });
-    timers.push(setTimeout(() => setLongWait(true), cumulative + LONG_WAIT_MS));
+    timers.push(setTimeout(() => setWaitTier(1), cumulative + LONG_WAIT_MS));
+    timers.push(setTimeout(() => setWaitTier(2), cumulative + LONG_WAIT_MS + VERY_LONG_WAIT_MS));
     return () => timers.forEach(clearTimeout);
   }, []);
 
@@ -74,9 +79,9 @@ export function LoadingScreen() {
           })}
         </ul>
 
-        {longWait && (
+        {waitTier > 0 && (
           <p className="mt-6 text-center text-[13px] text-ink-42">
-            {t.loading.longWait}
+            {waitTier === 1 ? t.loading.longWait : t.loading.veryLongWait}
           </p>
         )}
       </div>

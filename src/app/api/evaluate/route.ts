@@ -353,6 +353,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Testing-only escape hatch: exercises the Playwright/Chromium capture
+    // pipeline against a real URL and returns immediately, without ever
+    // calling Claude. Zero API cost — use this to confirm captures work on
+    // Vercel (or to see how long they take there) before spending tokens.
+    const debugCaptureOnly = (body as { debugCaptureOnly?: boolean }).debugCaptureOnly;
+    if (debugCaptureOnly && url) {
+      const startedAt = Date.now();
+      try {
+        const captured = await captureUrlScreenshots(url);
+        return NextResponse.json({
+          ok: true,
+          durationMs: Date.now() - startedAt,
+          images: captured.map((img) => ({
+            viewport: img.viewport,
+            sourceUrl: img.sourceUrl,
+            mediaType: img.mediaType,
+            base64Length: img.base64.length,
+          })),
+        });
+      } catch (err) {
+        return NextResponse.json(
+          {
+            ok: false,
+            durationMs: Date.now() - startedAt,
+            error: err instanceof Error ? err.message : "Error desconocido",
+          },
+          { status: 500 }
+        );
+      }
+    }
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       // Sin API key configurada: devolvemos una evaluación de ejemplo para

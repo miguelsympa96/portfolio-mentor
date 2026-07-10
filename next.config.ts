@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   // runtime ("Cannot find module .../browsers.json").
   outputFileTracingIncludes: {
     "/api/evaluate": ["./node_modules/playwright-core/**/*", "./node_modules/@sparticuz/chromium/**/*"],
+    "/api/capture-preview": ["./node_modules/playwright-core/**/*", "./node_modules/@sparticuz/chromium/**/*"],
   },
 };
 

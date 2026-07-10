@@ -20,12 +20,6 @@ const SEMAPHORE_TINT = {
   yellow: "bg-[#f7f0e6] text-[#b8834a]",
   red: "bg-[#f7ece9] text-[#b5533c]",
 } as const;
-const SEMAPHORE_DOT = {
-  green: "bg-accent-green",
-  yellow: "bg-[#b8834a]",
-  red: "bg-[#b5533c]",
-} as const;
-
 const JOB_FIT_BADGE = {
   alto: "bg-[#eef3ee] text-accent-green",
   medio: "bg-[#f7f0e6] text-[#b8834a]",
@@ -41,11 +35,10 @@ const CONFETTI = [
 
 function VerdictDot({ semaphore }: { semaphore: EvaluationResult["semaphore"] }) {
   const celebratory = semaphore === "green";
-  const pulseColor = semaphore === "yellow" ? "#b8834a" : "#b5533c";
 
   return (
-    <div className="relative mx-auto flex size-8 items-center justify-center">
-      {celebratory ? (
+    <div className="relative mx-auto flex w-28 items-center justify-center">
+      {celebratory &&
         CONFETTI.map((c, i) => (
           <span
             key={i}
@@ -62,11 +55,9 @@ function VerdictDot({ semaphore }: { semaphore: EvaluationResult["semaphore"] })
               } as React.CSSProperties
             }
           />
-        ))
-      ) : (
-        <span className="pulse-ring absolute size-8 rounded-full border-2 border-current" style={{ color: pulseColor }} />
-      )}
-      <span className={`relative size-2.5 rounded-full ${SEMAPHORE_DOT[semaphore]}`} />
+        ))}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/raisemyportfolio.svg" alt="raisemyportfolio.com" className="relative h-auto w-24" />
     </div>
   );
 }

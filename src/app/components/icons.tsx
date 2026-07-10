@@ -50,6 +50,16 @@ export function ImageIcon({ className }: { className?: string }) {
   );
 }
 
+export function DocumentIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className}>
+      <path d="M4 2h5l3 3v9a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth={1.3} strokeLinejoin="round" />
+      <path d="M9 2v3h3" stroke="currentColor" strokeWidth={1.3} strokeLinejoin="round" />
+      <path d="M5.5 9h5M5.5 11.5h5" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" className={className}>

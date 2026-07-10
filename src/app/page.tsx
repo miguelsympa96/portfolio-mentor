@@ -40,6 +40,8 @@ export default function Home() {
   const [resolvedActions, setResolvedActions] = useState<Set<string>>(new Set());
   const [improveStartStep, setImproveStartStep] = useState(0);
   const [hydrated, setHydrated] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewIsPdf, setPreviewIsPdf] = useState(false);
 
   // Restore a completed analysis after an accidental reload — re-running
   // the analysis costs 20-45s and a real API call, so this is worth
@@ -117,8 +119,39 @@ export default function Home() {
     return data as EvaluationResult;
   }
 
+  // Cosmetic only, never blocks or affects the real evaluation: grabs
+  // something to show on the loading screen so the wait feels grounded in
+  // the user's actual portfolio instead of a generic spinner. Uploads are
+  // already in the browser (instant); a URL needs a fast, separate capture
+  // since the full /api/evaluate capture only comes back at the very end.
+  function startPreviewCapture() {
+    setPreviewImage(null);
+    setPreviewIsPdf(false);
+    if (images.length > 0) {
+      const first = images[0].dataUrl;
+      setPreviewIsPdf(first.startsWith("data:application/pdf"));
+      setPreviewImage(first);
+      return;
+    }
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+    fetch("/api/capture-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: trimmedUrl }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.dataUrl) setPreviewImage(data.dataUrl);
+      })
+      .catch(() => {
+        // No preview is a fine fallback, this never affects the real analysis.
+      });
+  }
+
   async function handleSubmit() {
     unlockAudioForCompletionSound();
+    startPreviewCapture();
     setError(null);
     setPreviousResult(null);
     setView("loading");
@@ -140,6 +173,7 @@ export default function Home() {
   async function handleRescan() {
     if (!result) return;
     unlockAudioForCompletionSound();
+    startPreviewCapture();
     setError(null);
     setPreviousResult(result);
     setView("loading");
@@ -164,6 +198,8 @@ export default function Home() {
     setError(null);
     setResolvedActions(new Set());
     setImproveStartStep(0);
+    setPreviewImage(null);
+    setPreviewIsPdf(false);
     setView("home");
     clearSession();
   }
@@ -176,7 +212,7 @@ export default function Home() {
   let screen: ReactNode;
 
   if (view === "loading") {
-    screen = <LoadingScreen />;
+    screen = <LoadingScreen previewImage={previewImage} previewIsPdf={previewIsPdf} />;
   } else if (view === "improve" && result) {
     screen = (
       <ImproveFlow

@@ -157,6 +157,30 @@ async function launchBrowser(): Promise<Browser> {
   return localChromium.launch({ headless: true });
 }
 
+export interface HomePreview {
+  mediaType: CapturedMediaType;
+  base64: string;
+}
+
+// Single fast navigation + above-the-fold screenshot, no subpages, no mobile
+// pass. Used purely to show the user a glimpse of their own site while the
+// full evaluation (which re-captures everything properly) is still running,
+// so it optimizes for speed over completeness: viewport-only, not fullPage.
+export async function captureHomePreview(rawUrl: string): Promise<HomePreview> {
+  const base = new URL(normalizeUrl(rawUrl));
+  const browser = await launchBrowser();
+
+  try {
+    const context = await browser.newContext({ viewport: VIEWPORT });
+    const page = await context.newPage();
+    await gotoAndSettle(page, base.toString());
+    const shot = await page.screenshot({ fullPage: false, type: "png" });
+    return { mediaType: "image/png", base64: shot.toString("base64") };
+  } finally {
+    await browser.close();
+  }
+}
+
 export interface CaptureResult {
   images: CapturedImage[];
   // How many additional internal links (beyond what MAX_PAGES allowed) were

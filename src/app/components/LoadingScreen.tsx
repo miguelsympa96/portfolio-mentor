@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { DocumentIcon } from "./icons";
 
 // Gaps between steps (ms), one shorter than the step count — spread across a
 // realistic total wait so steps don't all finish in the first 12s and then
@@ -13,7 +14,12 @@ const STEP_GAPS_MS = [1800, 2200, 2600, 3000, 3400, 3800, 4200];
 const LONG_WAIT_MS = 14000;
 const VERY_LONG_WAIT_MS = 45000;
 
-export function LoadingScreen() {
+interface LoadingScreenProps {
+  previewImage?: string | null;
+  previewIsPdf?: boolean;
+}
+
+export function LoadingScreen({ previewImage, previewIsPdf }: LoadingScreenProps) {
   const { t } = useLocale();
   const [stepIndex, setStepIndex] = useState(0);
   const [waitTier, setWaitTier] = useState<0 | 1 | 2>(0);
@@ -48,6 +54,36 @@ export function LoadingScreen() {
         <p className="mb-8 text-center text-[12px] text-ink-42/80">
           {t.loading.notifyHint}
         </p>
+
+        {(previewImage || previewIsPdf) && (
+          <div className="preview-in relative mb-8 overflow-hidden rounded-xl border border-ink-border bg-white shadow-sm">
+            <div className="flex items-center gap-1.5 border-b border-ink-border bg-[#f7f6f2] px-3 py-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#e5988c]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#e5c98c]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#9dc9a8]" />
+            </div>
+            <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#f7f6f2]">
+              {previewIsPdf ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-ink-42">
+                  <DocumentIcon className="size-7" />
+                  <span className="text-[12px]">PDF</span>
+                </div>
+              ) : (
+                previewImage && (
+                  // eslint-disable-next-line @next/next/no-img-element -- data URL / remote screenshot, not an optimizable local asset
+                  <img
+                    src={previewImage}
+                    alt=""
+                    className="h-full w-full object-cover object-top"
+                  />
+                )
+              )}
+              {!previewIsPdf && previewImage && (
+                <div className="scan-line pointer-events-none absolute inset-x-0 h-1/3 bg-gradient-to-b from-transparent via-accent-green/25 to-transparent" />
+              )}
+            </div>
+          </div>
+        )}
 
         <ul className="flex flex-col gap-3">
           {steps.map((step, i) => {
@@ -93,6 +129,20 @@ export function LoadingScreen() {
         @keyframes loading-slide {
           0% { transform: translateX(-100%); }
           100% { transform: translateX(300%); }
+        }
+        @keyframes scan-line-sweep {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(400%); }
+        }
+        .scan-line {
+          animation: scan-line-sweep 2.2s ease-in-out infinite;
+        }
+        @keyframes preview-fade-in {
+          0% { opacity: 0; transform: scale(0.97); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .preview-in {
+          animation: preview-fade-in 0.5s ease-out;
         }
       `}</style>
     </div>

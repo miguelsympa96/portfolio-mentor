@@ -55,6 +55,8 @@ export const es: Dictionary = {
     ],
     longWait: "Los portfolios con varios case studies tardan un poco más, seguimos en ello.",
     veryLongWait: "Sigue en proceso, puede tardar hasta 3 minutos en total, no cierres esta pestaña.",
+    notifyHint: "Puedes cambiar de pestaña tranquilo, te avisamos con un sonido en cuanto esté listo.",
+    readyTitle: "✅ ¡Tu análisis está listo!",
   },
   result: {
     mockBanner: "Modo demo: configura ANTHROPIC_API_KEY para una evaluación real.",

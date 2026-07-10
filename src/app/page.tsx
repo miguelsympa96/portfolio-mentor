@@ -11,6 +11,7 @@ import { ImproveFlow } from "./components/ImproveFlow";
 import { AmbientFlowField } from "./components/AmbientFlowField";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { unlockAudioForCompletionSound, playCompletionSound, flashTitleUntilFocused } from "@/lib/notify";
 
 type View = "home" | "settings" | "loading" | "result" | "improve";
 
@@ -117,6 +118,7 @@ export default function Home() {
   }
 
   async function handleSubmit() {
+    unlockAudioForCompletionSound();
     setError(null);
     setPreviousResult(null);
     setView("loading");
@@ -124,6 +126,8 @@ export default function Home() {
       const data = await runEvaluation();
       setResult(data);
       setView("result");
+      playCompletionSound();
+      flashTitleUntilFocused(t.loading.readyTitle);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.settings.unknownError);
       setView("settings");
@@ -135,6 +139,7 @@ export default function Home() {
   // instead of the estimate ImproveFlow shows while resolving checklist items.
   async function handleRescan() {
     if (!result) return;
+    unlockAudioForCompletionSound();
     setError(null);
     setPreviousResult(result);
     setView("loading");
@@ -144,6 +149,8 @@ export default function Home() {
       setResolvedActions(new Set());
       setImproveStartStep(0);
       setView("result");
+      playCompletionSound();
+      flashTitleUntilFocused(t.loading.readyTitle);
     } catch (err) {
       setPreviousResult(null);
       setError(err instanceof Error ? err.message : t.settings.unknownError);

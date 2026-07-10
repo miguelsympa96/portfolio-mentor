@@ -55,6 +55,8 @@ export const fr: Dictionary = {
     ],
     longWait: "Les portfolios avec plusieurs études de cas prennent un peu plus de temps, on y travaille encore.",
     veryLongWait: "Toujours en cours, cela peut prendre jusqu'à 3 minutes au total, ne ferme pas cet onglet.",
+    notifyHint: "Tu peux changer d'onglet tranquillement, on te prévient avec un son dès que c'est prêt.",
+    readyTitle: "✅ Ton analyse est prête !",
   },
   result: {
     mockBanner: "Mode démo : configure ANTHROPIC_API_KEY pour une évaluation réelle.",

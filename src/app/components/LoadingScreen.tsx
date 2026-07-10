@@ -42,8 +42,11 @@ export function LoadingScreen() {
         <h1 className="mb-2 text-center font-serif-heading text-[26px] sm:text-[30px]">
           {t.loading.heading}
         </h1>
-        <p className="mb-8 text-center text-[13px] text-ink-42">
+        <p className="mb-2 text-center text-[13px] text-ink-42">
           {t.loading.subtitle}
+        </p>
+        <p className="mb-8 text-center text-[12px] text-ink-42/80">
+          {t.loading.notifyHint}
         </p>
 
         <ul className="flex flex-col gap-3">

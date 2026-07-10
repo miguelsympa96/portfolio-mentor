@@ -40,6 +40,8 @@ export interface Dictionary {
     steps: string[];
     longWait: string;
     veryLongWait: string;
+    notifyHint: string;
+    readyTitle: string;
   };
   result: {
     mockBanner: string;

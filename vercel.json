@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "src/app/api/evaluate/route.ts": {
+      "memory": 2048,
+      "maxDuration": 180
+    }
+  }
+}

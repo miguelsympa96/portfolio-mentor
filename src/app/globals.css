@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8f6f1;
+  --foreground: #1c2a22;
+  --ink: #1c2a22;
+  /* Solid colors, not alpha — tuned for >= 4.5:1 contrast on both
+     the cream background and white cards (WCAG AA for normal text). */
+  --ink-42: #4d5b53;
+  --ink-62: #3d4a43;
+  --ink-border: rgba(28, 42, 34, 0.16);
+  --accent-sage: #67a67d;
+  --accent-green: #2d5a3d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-ink: var(--ink);
+  --color-ink-42: var(--ink-42);
+  --color-ink-62: var(--ink-62);
+  --color-ink-border: var(--ink-border);
+  --color-accent-sage: var(--accent-sage);
+  --color-accent-green: var(--accent-green);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-dm-mono);
+  --font-serif: var(--font-playfair);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.label-mono {
+  font-family: var(--font-mono), monospace;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-62);
+}
+
+.font-serif-heading {
+  font-family: var(--font-serif), serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}

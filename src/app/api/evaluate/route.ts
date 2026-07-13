@@ -16,7 +16,13 @@ export const runtime = "nodejs";
 // allows, so it's safe to ask for more than Hobby's ceiling; on Hobby this
 // still caps at 60s and MAX_PAGES in capture.ts is the only real lever
 // left to buy margin.
-export const maxDuration = 180;
+//
+// Production incident (2026-07-13): with up to 5 case studies now captured,
+// a single attempt measured ~160s, leaving almost no room for the retry
+// logic below to ever actually retry within a 180s budget. Raised to 260s
+// (also bump vercel.json's functions.maxDuration to match, that value wins
+// over this one and silently overrides it if they drift apart again).
+export const maxDuration = 260;
 
 const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -515,7 +521,13 @@ export async function POST(req: NextRequest) {
 
       const message = await anthropic.messages.create({
         model: "claude-sonnet-5",
-        max_tokens: 4500,
+        // Production incident (2026-07-13): raising the case-study capture
+        // cap from 4 to 5 (matching the rubric's own ceiling) pushed some
+        // responses past the old 4500-token budget. case_studies is the
+        // last property in the tool schema, so a max_tokens cutoff lands
+        // there first, an empty/truncated array that looks identical to
+        // Claude never identifying any case study at all.
+        max_tokens: 8000,
         system: rubric,
         tools: [jobDescription ? evaluationToolWithJobFit : evaluationTool],
         tool_choice: { type: "tool", name: "submit_evaluation" },

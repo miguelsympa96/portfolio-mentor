@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { DocumentIcon } from "./icons";
 
@@ -17,6 +17,27 @@ const VERY_LONG_WAIT_MS = 45000;
 interface LoadingScreenProps {
   previewImage?: string | null;
   previewIsPdf?: boolean;
+}
+
+// Deliberately not a percentage bar — there's no real progress fraction to
+// report (the steps are paced on a timer, not tied to actual backend
+// milestones), so a literal progress bar would imply a precision that
+// doesn't exist. Two dots orbiting at different radii/speeds/directions
+// reads as "quietly working" without claiming to measure anything.
+function OrbitIndicator() {
+  return (
+    <div className="relative mx-auto mb-10 h-14 w-14 md:mx-0">
+      <div className="orbit-a absolute inset-0">
+        <span className="absolute left-1/2 top-0 size-2 -translate-x-1/2 rounded-full bg-accent-green" />
+      </div>
+      <div className="orbit-b absolute inset-[10px]">
+        <span className="absolute left-1/2 top-0 size-1.5 -translate-x-1/2 rounded-full bg-accent-sage" />
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="size-2 rounded-full bg-ink/15" />
+      </div>
+    </div>
+  );
 }
 
 function PreviewCard({ previewImage, previewIsPdf }: LoadingScreenProps) {
@@ -59,6 +80,9 @@ export function LoadingScreen({ previewImage, previewIsPdf }: LoadingScreenProps
   const { t } = useLocale();
   const [stepIndex, setStepIndex] = useState(0);
   const [waitTier, setWaitTier] = useState<0 | 1 | 2>(0);
+  const [displayIndex, setDisplayIndex] = useState(0);
+  const [phraseVisible, setPhraseVisible] = useState(true);
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -72,15 +96,31 @@ export function LoadingScreen({ previewImage, previewIsPdf }: LoadingScreenProps
     return () => timers.forEach(clearTimeout);
   }, []);
 
+  // Only one phrase on screen at a time: fade the current one out, swap the
+  // text while it's invisible, then fade the new one in. Skips the fade on
+  // the very first render so the initial phrase doesn't flash in from blank.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      setDisplayIndex(stepIndex);
+      return;
+    }
+    setPhraseVisible(false);
+    const t = setTimeout(() => {
+      setDisplayIndex(stepIndex);
+      setPhraseVisible(true);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [stepIndex]);
+
   const steps = t.loading.steps;
+  const currentStep = steps[Math.min(displayIndex, steps.length - 1)];
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-6 py-16">
       <div className="grid w-full max-w-4xl grid-cols-1 items-start gap-10 md:grid-cols-2 md:gap-14">
         <div className="mx-auto w-full max-w-md">
-          <div className="mb-10 h-[3px] w-full overflow-hidden rounded-full bg-ink-border">
-            <div className="h-full w-1/3 animate-[loading-slide_1.4s_ease-in-out_infinite] bg-accent-green" />
-          </div>
+          <OrbitIndicator />
 
           <h1 className="mb-2 text-center font-serif-heading text-[26px] sm:text-[30px] md:text-left">
             {t.loading.heading}
@@ -92,38 +132,16 @@ export function LoadingScreen({ previewImage, previewIsPdf }: LoadingScreenProps
             {t.loading.notifyHint}
           </p>
 
-          <ul className="flex flex-col gap-3">
-            {steps.map((step, i) => {
-              const isDone = i < stepIndex;
-              const isActive = i === stepIndex;
-              return (
-                <li
-                  key={step}
-                  className={`flex items-center gap-3 text-[13px] transition-opacity duration-300 ${
-                    isDone || isActive ? "opacity-100" : "opacity-35"
-                  }`}
-                >
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                      isDone
-                        ? "bg-accent-green text-white"
-                        : isActive
-                        ? "border-2 border-accent-green"
-                        : "border border-ink-border"
-                    }`}
-                  >
-                    {isDone ? "✓" : ""}
-                    {isActive && (
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-accent-green" />
-                    )}
-                  </span>
-                  <span className={isActive ? "font-medium text-ink" : "text-ink-42"}>
-                    {step}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex min-h-[24px] items-center justify-center gap-2.5 md:justify-start">
+            <span className="size-2 shrink-0 animate-pulse rounded-full bg-accent-green" />
+            <p
+              className={`text-[14px] font-medium text-ink transition-all duration-300 ${
+                phraseVisible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+              }`}
+            >
+              {currentStep}
+            </p>
+          </div>
 
           {waitTier > 0 && (
             <p className="mt-6 text-center text-[13px] text-ink-42 md:text-left">
@@ -138,9 +156,15 @@ export function LoadingScreen({ previewImage, previewIsPdf }: LoadingScreenProps
       </div>
 
       <style>{`
-        @keyframes loading-slide {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(300%); }
+        @keyframes orbit-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .orbit-a {
+          animation: orbit-spin 3.2s linear infinite;
+        }
+        .orbit-b {
+          animation: orbit-spin 4.6s linear infinite reverse;
         }
         @keyframes scan-line-sweep {
           0% { transform: translateY(-100%); }

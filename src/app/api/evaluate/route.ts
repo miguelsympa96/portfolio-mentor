@@ -555,7 +555,14 @@ export async function POST(req: NextRequest) {
         break;
       }
       lastIssue = issue;
-      console.error(`evaluation attempt ${attempt} invalid: ${issue}`);
+      // Diagnostic detail beyond just the issue name: two production
+      // incidents in a row (2026-07-13) failed validation with no way to
+      // tell whether the field was truly missing, malformed, or the whole
+      // response got cut off by stop_reason "max_tokens". Without this,
+      // every recurrence is another blind guess instead of evidence.
+      console.error(
+        `evaluation attempt ${attempt} invalid: ${issue} | stop_reason=${message.stop_reason} | keys=${Object.keys(candidate).join(",")} | semaphore=${JSON.stringify(candidate.semaphore)}`
+      );
     }
 
     if (!input) {

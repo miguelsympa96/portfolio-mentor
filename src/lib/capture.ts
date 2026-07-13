@@ -1,7 +1,15 @@
 import type { Browser, Page } from "playwright-core";
 import sharp from "sharp";
 
-const MAX_PAGES = 6; // home + up to 5 subpages, matching the rubric's own 3-5 case study ceiling
+// Home + up to 4 subpages. Was raised to 6 (5 case studies) to match the
+// rubric's own ceiling, but two production incidents in a row (2026-07-13,
+// same 5-case-study portfolio) hit two different validation failures
+// (case_studies truncated, then semaphore missing) even after giving the
+// model more max_tokens headroom. Larger, more complex tool-call JSON
+// correlates with higher odds of some field coming out malformed, not just
+// the last one, so pulled back to the configuration that was reliable
+// before, pending more evidence from the new diagnostic logging below.
+const MAX_PAGES = 5;
 const VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 }; // iPhone-class width, the most common mobile breakpoint
 const MAX_IMAGE_HEIGHT = 6000; // cap full-page screenshot height before sending to Claude

@@ -14,9 +14,30 @@ import {
 import { compositeScore } from "@/lib/scoring";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronIcon } from "./icons";
 
 const DONE_REDIRECT_MS = 6000;
+
+// Collapsed by default: cards were reading as a wall of text with the
+// problem, why-it-matters, and fixes all expanded at once. The "why" is
+// useful context but not what the user needs to act, so it's tucked behind
+// a toggle instead of always taking up vertical space.
+function WhyItMatters({ text, t }: { text: string; t: Dictionary }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-ink-42"
+      >
+        {t.improve.whyLabel}
+        <ChevronIcon className={`size-3 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && <p className="mt-1 text-[13px] italic leading-relaxed text-ink-42">{text}</p>}
+    </div>
+  );
+}
 
 const JOB_FIT_BADGE = {
   alto: "bg-[#eef3ee] text-accent-green",
@@ -320,8 +341,7 @@ export function ImproveFlow({
                 <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
                 <p className="mt-1 text-[13px] leading-relaxed text-ink">{topFix.problem}</p>
 
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.whyLabel}</p>
-                <p className="mt-1 text-[13px] italic leading-relaxed text-ink-42">{topFix.whyItMatters}</p>
+                <WhyItMatters text={topFix.whyItMatters} t={t} />
 
                 <ActionChecklist entries={entries} resolvedActions={resolvedActions} onToggle={toggleAction} t={t} />
 
@@ -370,8 +390,7 @@ export function ImproveFlow({
                 <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
                 <p className="mt-1 text-[13px] leading-relaxed text-ink">{cs.problem}</p>
 
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.whyLabel}</p>
-                <p className="mt-1 text-[13px] italic leading-relaxed text-ink-42">{cs.whyItMatters}</p>
+                <WhyItMatters text={cs.whyItMatters} t={t} />
 
                 {isGood ? (
                   <div className="mt-4 rounded-xl bg-[#eef3ee] p-4">

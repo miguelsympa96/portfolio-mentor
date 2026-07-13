@@ -84,6 +84,7 @@ export interface Dictionary {
   };
   improve: {
     heading: string;
+    closeLabel: string;
     stepOf: (i: number, total: number) => string;
     back: string;
     next: string;

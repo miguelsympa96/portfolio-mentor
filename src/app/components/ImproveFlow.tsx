@@ -14,7 +14,7 @@ import {
 import { compositeScore } from "@/lib/scoring";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronIcon, CloseIcon } from "./icons";
 
 const DONE_REDIRECT_MS = 6000;
 
@@ -73,7 +73,7 @@ function SuggestionToggle({ suggestion, t }: { suggestion: TextSuggestion; t: Di
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-[12px] font-medium text-accent-green"
+        className="inline-flex items-center gap-1 rounded-full border border-accent-green/25 bg-[#eef3ee] px-2.5 py-1 text-[12px] font-semibold text-accent-green transition-colors hover:bg-[#e0ebe3]"
       >
         {t.improve.suggestionLabel}
         <ChevronIcon className={`size-3 transition-transform ${open ? "rotate-90" : ""}`} />
@@ -294,7 +294,17 @@ export function ImproveFlow({
     <div className="relative flex min-h-screen flex-col items-center px-6 py-16 sm:py-24">
       <main className="flex w-full max-w-[560px] flex-col gap-6">
         <div>
-          <p className="label-mono mb-3">{t.improve.heading}</p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="label-mono">{t.improve.heading}</p>
+            <button
+              type="button"
+              onClick={onBackToResult}
+              aria-label={t.improve.closeLabel}
+              className="flex size-7 items-center justify-center rounded-full text-ink-42 transition-colors hover:bg-ink-border/50 hover:text-ink"
+            >
+              <CloseIcon className="size-3.5" />
+            </button>
+          </div>
           <div className="flex items-center justify-between text-[12px] text-ink-42">
             <span>{t.improve.stepOf(stepIndex + 1, visibleSteps.length)}</span>
             <span key={runningScore} className="score-flash font-mono font-medium text-ink">

@@ -105,6 +105,7 @@ export const es: Dictionary = {
   },
   improve: {
     heading: "Mejorando tu portfolio",
+    closeLabel: "Cerrar y volver al resultado",
     stepOf: (i, total) => `Paso ${i} de ${total}`,
     back: "Atrás",
     next: "Siguiente",

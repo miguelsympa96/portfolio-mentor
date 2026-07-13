@@ -308,11 +308,11 @@ export function ResultScreen({
         <div className="w-full rounded-2xl border border-ink-border bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
-              <span className="font-serif-heading text-[44px] leading-none">{score}</span>
+              <span className="font-serif-heading text-[44px] leading-none">{runningScore}</span>
               <span className="text-[18px] text-ink-42">/100</span>
               {runningScore > score && (
-                <span className="ml-1.5 text-[13px] text-ink-42">
-                  {t.improve.ptsEstimate(runningScore - score)}
+                <span className="ml-2 inline-block rounded-full bg-[#f7f0e6] px-2 py-0.5 align-middle text-[11px] font-semibold text-[#8a6a3a]">
+                  {t.improve.estimated}
                 </span>
               )}
             </div>
@@ -349,13 +349,13 @@ export function ResultScreen({
             </InfoTooltip>
           </div>
 
-          {potential > score && (
+          {potential > runningScore && (
             <>
               <div className="relative mt-4 h-1.5 w-full overflow-hidden rounded-full bg-ink-border">
-                <div className="absolute inset-y-0 left-0 rounded-full bg-accent-green" style={{ width: `${score}%` }} />
+                <div className="absolute inset-y-0 left-0 rounded-full bg-accent-green" style={{ width: `${runningScore}%` }} />
                 <div
                   className="absolute inset-y-0 rounded-full bg-accent-sage/50"
-                  style={{ left: `${score}%`, width: `${potential - score}%` }}
+                  style={{ left: `${runningScore}%`, width: `${potential - runningScore}%` }}
                 />
               </div>
               <p className="mt-2 text-[13px] text-ink-42">

@@ -42,6 +42,7 @@ export interface Dictionary {
     veryLongWait: string;
     notifyHint: string;
     readyTitle: string;
+    previewLoading: string;
   };
   result: {
     mockBanner: string;

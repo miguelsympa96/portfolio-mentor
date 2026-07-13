@@ -57,6 +57,7 @@ export const pt: Dictionary = {
     veryLongWait: "Ainda a trabalhar nisso, pode demorar até 3 minutos no total, não fechas esta aba.",
     notifyHint: "Podes mudar de separador à vontade, avisamos-te com um som assim que estiver pronto.",
     readyTitle: "✅ A tua análise está pronta!",
+    previewLoading: "A capturar o teu portfolio...",
   },
   result: {
     mockBanner: "Modo demo: configura ANTHROPIC_API_KEY para uma avaliação real.",

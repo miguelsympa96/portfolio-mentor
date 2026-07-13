@@ -57,6 +57,7 @@ export const fr: Dictionary = {
     veryLongWait: "Toujours en cours, cela peut prendre jusqu'à 3 minutes au total, ne ferme pas cet onglet.",
     notifyHint: "Tu peux changer d'onglet tranquillement, on te prévient avec un son dès que c'est prêt.",
     readyTitle: "✅ Ton analyse est prête !",
+    previewLoading: "Capture de ton portfolio en cours...",
   },
   result: {
     mockBanner: "Mode démo : configure ANTHROPIC_API_KEY pour une évaluation réelle.",

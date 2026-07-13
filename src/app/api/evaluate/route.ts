@@ -11,17 +11,21 @@ import { appendEvaluationRow, getEvaluationScores } from "@/lib/googleSheets";
 export const runtime = "nodejs";
 // QA finding: the Claude vision call alone (6 images + a large structured
 // tool schema) measured 55-85s on its own in testing, before capture time
-// is even added, and a validation retry (see findEvaluationIssue below)
-// can trigger a second full call. Vercel clamps this to whatever the plan
+// is even added, and a validation retry (see callEvaluationTool below) can
+// trigger a second full call. Vercel clamps this to whatever the plan
 // allows, so it's safe to ask for more than Hobby's ceiling; on Hobby this
 // still caps at 60s and MAX_PAGES in capture.ts is the only real lever
 // left to buy margin.
 //
-// Production incident (2026-07-13): with up to 5 case studies now captured,
-// a single attempt measured ~160s, leaving almost no room for the retry
-// logic below to ever actually retry within a 180s budget. Raised to 260s
-// (also bump vercel.json's functions.maxDuration to match, that value wins
-// over this one and silently overrides it if they drift apart again).
+// Production incident (2026-07-13): with up to 5 case studies captured in
+// one combined call, a single attempt measured ~160s, leaving almost no
+// room for the retry logic to ever actually retry within a 180s budget.
+// Raised to 260s (also bump vercel.json's functions.maxDuration to match,
+// that value wins over this one and silently overrides it if they drift
+// apart again). The evaluation is now split into two parallel calls (core
+// verdict + case studies, see callEvaluationTool) specifically to keep
+// each one's generation time well under this budget even as the case
+// study cap goes up.
 export const maxDuration = 260;
 
 const RATE_LIMIT = 6;
@@ -66,7 +70,7 @@ const fixProperty = {
   required: ["actions"],
 };
 
-const baseProperties = {
+const coreProperties = {
   semaphore: {
     type: "string",
     enum: ["green", "yellow", "red"],
@@ -143,12 +147,24 @@ const baseProperties = {
       required: ["key", "score", "problem", "why_it_matters", "fix"],
     },
   },
+};
+
+// Split into its own tool call (see submitCaseStudiesTool below) rather
+// than folded into the same response as semaphore/categories/strengths.
+// Production incident (2026-07-13): asking Claude to write up to 5 detailed
+// case studies AND everything else in one giant structured response was
+// unreliable, two failures in a row with different fields coming back
+// broken (case_studies truncated, then semaphore missing), even after
+// raising max_tokens. A dedicated, smaller call for case studies is more
+// reliable per-call and lets the cap go up (real portfolios commonly carry
+// 3-8) instead of trading coverage for reliability.
+const caseStudiesProperties = {
   case_studies: {
     type: "array",
     minItems: 1,
-    maxItems: 5,
+    maxItems: 8,
     description:
-      "Cada case study o proyecto identificable en las capturas, en el orden actual en que aparece en el portfolio. Entre 1 y 5 elementos, nunca vacío. Si no se puede identificar ningún case study individual en las capturas (ej. solo se ve el home), devuelve un único elemento explicándolo en 'problem' con recommendation 'ampliar'.",
+      "Cada case study o proyecto identificable en las capturas, en el orden actual en que aparece en el portfolio. Entre 1 y 8 elementos, nunca vacío. Si no se puede identificar ningún case study individual en las capturas (ej. solo se ve el home), devuelve un único elemento explicándolo en 'problem' con recommendation 'ampliar'.",
     items: {
       type: "object",
       properties: {
@@ -186,15 +202,7 @@ const baseProperties = {
   },
 };
 
-const baseRequired = [
-  "semaphore",
-  "headline",
-  "verdict_headline",
-  "strengths",
-  "key_risks",
-  "categories",
-  "case_studies",
-];
+const coreRequired = ["semaphore", "headline", "verdict_headline", "strengths", "key_risks", "categories"];
 
 const jobFitProperty = {
   type: "object",
@@ -224,25 +232,36 @@ const jobFitProperty = {
   required: ["level", "summary", "strengths", "gaps"],
 };
 
-const evaluationTool: Anthropic.Tool = {
-  name: "submit_evaluation",
+const coreEvaluationTool: Anthropic.Tool = {
+  name: "submit_core_evaluation",
   description:
-    "Entrega la evaluación de la Capa 1 (tarjeta resumen) del portfolio según el rubric.",
+    "Entrega el veredicto general y las 6 categorías de la Capa 1 (tarjeta resumen) del portfolio según el rubric. NO incluye el desglose de case studies, eso va en una herramienta aparte.",
   input_schema: {
     type: "object",
-    properties: baseProperties,
-    required: baseRequired,
+    properties: coreProperties,
+    required: coreRequired,
   },
 };
 
-const evaluationToolWithJobFit: Anthropic.Tool = {
-  name: "submit_evaluation",
+const coreEvaluationToolWithJobFit: Anthropic.Tool = {
+  name: "submit_core_evaluation",
   description:
-    "Entrega la evaluación de la Capa 1 (tarjeta resumen) del portfolio según el rubric, incluyendo fit con una oferta específica.",
+    "Entrega el veredicto general y las 6 categorías de la Capa 1 (tarjeta resumen) del portfolio según el rubric, incluyendo fit con una oferta específica. NO incluye el desglose de case studies, eso va en una herramienta aparte.",
   input_schema: {
     type: "object",
-    properties: { ...baseProperties, job_fit: jobFitProperty },
-    required: [...baseRequired, "job_fit"],
+    properties: { ...coreProperties, job_fit: jobFitProperty },
+    required: [...coreRequired, "job_fit"],
+  },
+};
+
+const caseStudiesTool: Anthropic.Tool = {
+  name: "submit_case_studies",
+  description:
+    "Entrega el desglose detallado de cada case study identificable en el portfolio (nombre, recomendación, problema, por qué importa, fixes).",
+  input_schema: {
+    type: "object",
+    properties: caseStudiesProperties,
+    required: ["case_studies"],
   },
 };
 
@@ -266,7 +285,7 @@ function dataUrlToCapturedImage(dataUrl: string): CapturedImage {
 // server-enforced constraints — QA testing against real portfolios found
 // both a fully-missing required field (semaphore) and an empty array
 // despite minItems: 1 (case_studies). Validate before trusting the output.
-function findEvaluationIssue(input: Record<string, unknown>): string | null {
+function findCoreEvaluationIssue(input: Record<string, unknown>): string | null {
   const semaphore = input.semaphore;
   if (semaphore !== "green" && semaphore !== "yellow" && semaphore !== "red") {
     return "semaphore ausente o inválido";
@@ -281,6 +300,10 @@ function findEvaluationIssue(input: Record<string, unknown>): string | null {
   if (categories.some((c) => typeof c.score !== "number" || c.score < 0 || c.score > 10)) {
     return "categories con score inválido";
   }
+  return null;
+}
+
+function findCaseStudiesIssue(input: Record<string, unknown>): string | null {
   if (!Array.isArray(input.case_studies) || input.case_studies.length === 0) {
     return "case_studies vacío";
   }
@@ -312,6 +335,98 @@ function normalizeEvaluation(input: Record<string, unknown>) {
     })),
     ...(job_fit ? { jobFit: job_fit } : {}),
   };
+}
+
+interface CallEvaluationToolOptions {
+  anthropic: Anthropic;
+  tool: Anthropic.Tool;
+  system: string;
+  contextLines: string[];
+  imageBlocks: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam | Anthropic.DocumentBlockParam)[];
+  maxTokens: number;
+  findIssue: (candidate: Record<string, unknown>) => string | null;
+  requestStartedAt: number;
+  functionBudgetMs: number;
+  minRetryBudgetMs: number;
+}
+
+// Shared retry loop for a single tool-use call: the tool schema's required
+// fields and minItems are hints, not guarantees, so an occasional response
+// drops a required field or returns an empty array despite it. A retry
+// resolves this in practice far more often than it costs in latency, but
+// only if there's realistically enough time budget left to complete one
+// (production incident 2026-07-10: an unconditional retry started a second
+// ~160s call with only ~46s left, Vercel killed the function mid-flight and
+// returned its own plain-text timeout page instead of this route's JSON
+// error, which the frontend couldn't parse).
+async function callEvaluationTool({
+  anthropic,
+  tool,
+  system,
+  contextLines,
+  imageBlocks,
+  maxTokens,
+  findIssue,
+  requestStartedAt,
+  functionBudgetMs,
+  minRetryBudgetMs,
+}: CallEvaluationToolOptions): Promise<{ input: Record<string, unknown> | null; lastIssue: string | null }> {
+  const MAX_ATTEMPTS = 2;
+  let input: Record<string, unknown> | null = null;
+  let lastIssue: string | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      const remaining = functionBudgetMs - (Date.now() - requestStartedAt);
+      if (remaining < minRetryBudgetMs) {
+        console.error(
+          `skipping ${tool.name} retry, only ${remaining}ms left in the function budget`
+        );
+        break;
+      }
+    }
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: maxTokens,
+      system,
+      tools: [tool],
+      tool_choice: { type: "tool", name: tool.name },
+      messages: [
+        {
+          role: "user",
+          content: [...imageBlocks, { type: "text", text: contextLines.join("\n") }],
+        },
+      ],
+    });
+
+    const toolUse = message.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+    );
+
+    if (!toolUse) {
+      lastIssue = "sin tool_use en la respuesta";
+      continue;
+    }
+
+    const candidate = toolUse.input as Record<string, unknown>;
+    const issue = findIssue(candidate);
+    if (!issue) {
+      input = candidate;
+      break;
+    }
+    lastIssue = issue;
+    // Diagnostic detail beyond just the issue name: two production
+    // incidents in a row (2026-07-13) failed validation with no way to tell
+    // whether the field was truly missing, malformed, or the whole response
+    // got cut off by stop_reason "max_tokens". Without this, every
+    // recurrence is another blind guess instead of evidence.
+    console.error(
+      `${tool.name} attempt ${attempt} invalid: ${issue} | stop_reason=${message.stop_reason} | keys=${Object.keys(candidate).join(",")}`
+    );
+  }
+
+  return { input, lastIssue };
 }
 
 export async function POST(req: NextRequest) {
@@ -458,7 +573,7 @@ export async function POST(req: NextRequest) {
     });
     const hasMobileCapture = capturedImages.some((img) => img.viewport === "mobile");
 
-    const contextLines = [
+    const sharedContextLines = [
       seniority
         ? `Nivel de seniority objetivo del candidato: ${SENIORITY_LABELS[seniority]}.`
         : "El candidato no indicó un nivel de seniority manualmente: infiérelo directamente del título y los requisitos de la oferta de trabajo adjunta.",
@@ -473,106 +588,92 @@ export async function POST(req: NextRequest) {
         : null,
       "Evalúa el Modo AUDITORÍA, Capa 1 (tarjeta resumen), usando las capturas o el PDF adjuntos como única evidencia visual.",
       "TONO: escribe como un reclutador senior de verdad hablando en primera persona, directo y sin adornos corporativos — evita lenguaje de consultoría genérico. Sé honesto y contundente, no despiadado: nunca inventes contexto que no viste, y reconoce lo que sí funciona con la misma franqueza que lo que no. Ejemplo del tono buscado: en vez de 'Este proyecto carece de impacto medible', escribe 'No puedo saber si esto movió el negocio'.",
-      "Para cada categoría y cada case study, incluye un 'fix' con 1-3 acciones accionables y específicas — nunca un consejo genérico tipo 'mejora la claridad'. Si el fix es un cambio de copy concreto, incluye la frase original citada tal cual y una propuesta de reemplazo que preserve el vocabulario y la voz del candidato. Si el problema es falta de impacto medible, recuerda que un diseñador rara vez es dueño de la métrica de negocio: antes de pedir una cifra, considera si el case study ya muestra un antes/después (menos pasos, un check que antes fallaba), una señal de proceso (un componente o decisión suya que el equipo adoptó) o una cita de usuario/stakeholder tras el lanzamiento, cualquiera de esas tres cuenta como evidencia real. Solo si NINGUNA de las tres existe, la acción debe pedir al candidato que reconstruya el dato (¿lo midió? ¿hay un proxy cualitativo?) y lo etiquete como Medido o Estimado — nunca una cifra fabricada.",
-      "Los case studies son la parte más importante de un portfolio de diseño: identifica cada case study visible en las capturas o el PDF, en el orden actual en que aparecen, y da una recomendación concreta (mantener / reordenar / ampliar / cortar) con la razón específica. Si hay varios problemas distintos en el mismo case study, sepáralos en elementos individuales de 'fixes' en vez de fundirlos en una sola frase larga.",
-      "Para cada case study, revisa explícitamente si hay capturas o mockups del producto real (no solo texto o fotos del equipo): si las hay, evalúa su calidad visual como parte de craft (¿se ven pulidas y profesionales, con UI consistente y de alta fidelidad, o rotas, pixeladas, con placeholders tipo 'Lorem ipsum' o inconsistentes entre pantallas?) y cítalo con algo concreto que veas. Si un case study específico no tiene ninguna captura de producto en la evidencia que se te dio, dilo explícitamente como 'no veo capturas del producto para este case study en las imágenes disponibles' en vez de asumir que no existen en el portfolio real: puede que simplemente no se capturaron.",
+      "Cuando te refieras a un case study o proyecto específico (en strengths, key_risks, o el problem/why_it_matters de una categoría), nombra explícitamente cuál es (el nombre del proyecto o 'Case Study N' según el orden en que aparecen) — nunca uses referencias ambiguas tipo 'el case study', 'el trabajo real' o 'ese proyecto' sin decir a cuál te refieres. El lector no puede adivinarlo.",
+      hasMobileCapture
+        ? "Se adjunta una captura real en viewport móvil (390x844, identificada como tal en el texto que la precede). Úsala para dar un veredicto concreto sobre responsive en la categoría de craft: cita lo que ves (overflow, texto cortado, elementos rotos) en vez de una frase genérica."
+        : "No hay captura en viewport móvil disponible (portfolio subido como capturas manuales o PDF). No afirmes ni niegues que el portfolio es responsive en móvil: di explícitamente que no pudiste verificarlo con la evidencia disponible.",
+      "Nunca uses el guion largo (—) en ningún texto que generes. Si necesitas una pausa o contraste, usa una coma, un punto o dos puntos en su lugar.",
+      locale && locale !== "es"
+        ? `Escribe absolutamente todo el texto de tu respuesta en ${LANGUAGE_NAMES[locale] ?? locale}, no en español.`
+        : null,
+    ].filter((line): line is string => !!line);
+
+    const coreContextLines = [
+      ...sharedContextLines,
+      "Para cada categoría, incluye un 'fix' con 1-3 acciones accionables y específicas — nunca un consejo genérico tipo 'mejora la claridad'. Si el fix es un cambio de copy concreto, incluye la frase original citada tal cual y una propuesta de reemplazo que preserve el vocabulario y la voz del candidato. Si el problema es falta de impacto medible, recuerda que un diseñador rara vez es dueño de la métrica de negocio: antes de pedir una cifra, considera si el candidato ya muestra un antes/después (menos pasos, un check que antes fallaba), una señal de proceso (un componente o decisión suya que el equipo adoptó) o una cita de usuario/stakeholder tras el lanzamiento, cualquiera de esas tres cuenta como evidencia real. Solo si NINGUNA de las tres existe, la acción debe pedir al candidato que reconstruya el dato (¿lo midió? ¿hay un proxy cualitativo?) y lo etiquete como Medido o Estimado — nunca una cifra fabricada.",
       "Completa también 'strengths' (fortalezas reales y específicas, no nombres de categorías) y 'key_risks' (en primera persona de reclutador) — estos alimentan una sección de 'notas del reclutador', así que deben sonar como notas reales tomadas durante una revisión, no como resumen de categorías.",
       jobDescription
         ? `El candidato quiere aplicar a esta oferta específica:\n"""\n${jobDescription}\n"""\nAdemás de la Capa 1, completa job_fit comparando el portfolio contra los requisitos de esta oferta: nivel de fit, resumen, fortalezas alineadas y gaps concretos.`
         : null,
-      hasMobileCapture
-        ? "Se adjunta una captura real en viewport móvil (390x844, identificada como tal en el texto que la precede). Úsala para dar un veredicto concreto sobre responsive en la categoría de craft: cita lo que ves (overflow, texto cortado, elementos rotos) en vez de una frase genérica."
-        : "No hay captura en viewport móvil disponible (portfolio subido como capturas manuales o PDF). No afirmes ni niegues que el portfolio es responsive en móvil: di explícitamente que no pudiste verificarlo con la evidencia disponible.",
-      "Responde exclusivamente llamando a la herramienta submit_evaluation, con las 6 categorías en el orden dado.",
-      "Nunca uses el guion largo (—) en ningún texto que generes. Si necesitas una pausa o contraste, usa una coma, un punto o dos puntos en su lugar.",
-      locale && locale !== "es"
-        ? `Escribe absolutamente todo el texto de tu respuesta (headline, verdict_headline, strengths, key_risks, problem, why_it_matters, fix, case studies, job_fit) en ${LANGUAGE_NAMES[locale] ?? locale}, no en español.`
-        : null,
-    ].filter(Boolean);
+      "Responde exclusivamente llamando a la herramienta submit_core_evaluation, con las 6 categorías en el orden dado. No incluyas el desglose de case studies, eso lo pide otra herramienta aparte.",
+    ].filter((line): line is string => !!line);
 
-    // Up to 2 attempts: the tool schema's required fields and minItems are
-    // hints, not guarantees, so an occasional response drops a required
-    // field or returns an empty array despite it. A retry resolves this in
-    // practice far more often than it costs in latency.
-    //
-    // Production incident (2026-07-10): a single attempt took 134s, failed
-    // validation, and the unconditional retry below started a second call
-    // with only ~46s left in the 180s budget. Vercel killed the function
-    // mid-flight and returned its own plain-text timeout page instead of
-    // this route's JSON error, which the frontend can't parse. Guard every
-    // retry against the remaining budget so a doomed second attempt never
-    // starts, this route's own fast JSON error fires instead.
-    const MAX_ATTEMPTS = 2;
+    const caseStudiesContextLines = [
+      ...sharedContextLines,
+      "Los case studies son la parte más importante de un portfolio de diseño: identifica cada case study visible en las capturas o el PDF, en el orden actual en que aparecen, y da una recomendación concreta (mantener / reordenar / ampliar / cortar) con la razón específica. Si hay varios problemas distintos en el mismo case study, sepáralos en elementos individuales de 'fixes' en vez de fundirlos en una sola frase larga. No incluyas la home page ni páginas genéricas (about, builds, contacto) como si fueran un case study propio, solo cuentan los proyectos individuales con su propio problema/proceso/resultado.",
+      "Para cada case study, revisa explícitamente si hay capturas o mockups del producto real (no solo texto o fotos del equipo): si las hay, evalúa su calidad visual como parte de craft (¿se ven pulidas y profesionales, con UI consistente y de alta fidelidad, o rotas, pixeladas, con placeholders tipo 'Lorem ipsum' o inconsistentes entre pantallas?) y cítalo con algo concreto que veas. Si un case study específico no tiene ninguna captura de producto en la evidencia que se te dio, dilo explícitamente como 'no veo capturas del producto para este case study en las imágenes disponibles' en vez de asumir que no existen en el portfolio real: puede que simplemente no se capturaron (algunas webs revelan imágenes al hacer scroll, si la captura muestra huecos en blanco sospechosamente grandes, es más probable que sea un fallo de captura que la ausencia real de UI).",
+      "Responde exclusivamente llamando a la herramienta submit_case_studies.",
+    ].filter((line): line is string => !!line);
+
+    // Two calls in parallel instead of one giant response: production
+    // incidents (2026-07-13) showed that asking Claude to write semaphore +
+    // categories + strengths + key_risks + up to 5 detailed case studies in
+    // a single tool call was unreliable, two failures in a row with
+    // different fields coming back broken even after raising max_tokens.
+    // Splitting means each call's structured output is much smaller (so
+    // less likely to have a malformed field anywhere), and the case-study
+    // cap can go up (real portfolios commonly carry 3-8) without
+    // reintroducing that risk. Runs concurrently so wall-clock time is
+    // bounded by the slower of the two, not their sum — the cost is a
+    // second full vision pass over the same images, paid in API cost, not
+    // extra wait time.
     const FUNCTION_BUDGET_MS = maxDuration * 1000;
     const MIN_RETRY_BUDGET_MS = 90_000; // a call has measured as slow as ~170s
-    let input: Record<string, unknown> | null = null;
-    let lastIssue: string | null = null;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      if (attempt > 1) {
-        const remaining = FUNCTION_BUDGET_MS - (Date.now() - requestStartedAt);
-        if (remaining < MIN_RETRY_BUDGET_MS) {
-          console.error(
-            `skipping evaluation retry, only ${remaining}ms left in the function budget`
-          );
-          break;
-        }
-      }
-
-      const message = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        // Production incident (2026-07-13): raising the case-study capture
-        // cap from 4 to 5 (matching the rubric's own ceiling) pushed some
-        // responses past the old 4500-token budget. case_studies is the
-        // last property in the tool schema, so a max_tokens cutoff lands
-        // there first, an empty/truncated array that looks identical to
-        // Claude never identifying any case study at all.
-        max_tokens: 8000,
+    const [coreResult, caseStudiesResult] = await Promise.all([
+      callEvaluationTool({
+        anthropic,
+        tool: jobDescription ? coreEvaluationToolWithJobFit : coreEvaluationTool,
         system: rubric,
-        tools: [jobDescription ? evaluationToolWithJobFit : evaluationTool],
-        tool_choice: { type: "tool", name: "submit_evaluation" },
-        messages: [
-          {
-            role: "user",
-            content: [...imageBlocks, { type: "text", text: contextLines.join("\n") }],
-          },
-        ],
-      });
+        contextLines: coreContextLines,
+        imageBlocks,
+        maxTokens: 4000,
+        findIssue: findCoreEvaluationIssue,
+        requestStartedAt,
+        functionBudgetMs: FUNCTION_BUDGET_MS,
+        minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
+      }),
+      callEvaluationTool({
+        anthropic,
+        tool: caseStudiesTool,
+        system: rubric,
+        contextLines: caseStudiesContextLines,
+        imageBlocks,
+        maxTokens: 8000,
+        findIssue: findCaseStudiesIssue,
+        requestStartedAt,
+        functionBudgetMs: FUNCTION_BUDGET_MS,
+        minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
+      }),
+    ]);
 
-      const toolUse = message.content.find(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-      );
-
-      if (!toolUse) {
-        lastIssue = "sin tool_use en la respuesta";
-        continue;
-      }
-
-      const candidate = toolUse.input as Record<string, unknown>;
-      const issue = findEvaluationIssue(candidate);
-      if (!issue) {
-        input = candidate;
-        break;
-      }
-      lastIssue = issue;
-      // Diagnostic detail beyond just the issue name: two production
-      // incidents in a row (2026-07-13) failed validation with no way to
-      // tell whether the field was truly missing, malformed, or the whole
-      // response got cut off by stop_reason "max_tokens". Without this,
-      // every recurrence is another blind guess instead of evidence.
-      console.error(
-        `evaluation attempt ${attempt} invalid: ${issue} | stop_reason=${message.stop_reason} | keys=${Object.keys(candidate).join(",")} | semaphore=${JSON.stringify(candidate.semaphore)}`
-      );
-    }
-
-    if (!input) {
+    if (!coreResult.input || !caseStudiesResult.input) {
+      const issues = [
+        !coreResult.input ? `veredicto general: ${coreResult.lastIssue}` : null,
+        !caseStudiesResult.input ? `case studies: ${caseStudiesResult.lastIssue}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
       return NextResponse.json(
-        { error: `Claude no devolvió una evaluación completa (${lastIssue}). Prueba de nuevo.` },
+        { error: `Claude no devolvió una evaluación completa (${issues}). Prueba de nuevo.` },
         { status: 502 }
       );
     }
 
-    const normalized = normalizeEvaluation(input) as EvaluationResult;
+    const normalized = normalizeEvaluation({
+      ...coreResult.input,
+      case_studies: caseStudiesResult.input.case_studies,
+    }) as EvaluationResult;
 
     // Benchmark: only for a real, explicit seniority bucket (not one merely
     // inferred from a job description) so the comparison pool stays honest.

@@ -1,20 +1,21 @@
 import type { Browser, Page } from "playwright-core";
 import sharp from "sharp";
 
-// Home + up to 4 subpages. Was raised to 6 (5 case studies) to match the
-// rubric's own ceiling, but two production incidents in a row (2026-07-13,
-// same 5-case-study portfolio) hit two different validation failures
-// (case_studies truncated, then semaphore missing) even after giving the
-// model more max_tokens headroom. Larger, more complex tool-call JSON
-// correlates with higher odds of some field coming out malformed, not just
-// the last one, so pulled back to the configuration that was reliable
-// before, pending more evidence from the new diagnostic logging below.
-const MAX_PAGES = 5;
+// Home + up to 8 subpages. Was capped at 4 case studies after two
+// production incidents (2026-07-13) where a single combined Claude call
+// asked to write semaphore + categories + up to 5 detailed case studies in
+// one giant structured response came back broken (different field missing
+// each time). The real fix was splitting evaluation into two parallel
+// Claude calls, core verdict and case studies (see /api/evaluate/route.ts),
+// so each call's output stays small regardless of case study count. With
+// that in place, the cap can reflect what real portfolios look like
+// (commonly 3-8 case studies) instead of trading coverage for reliability.
+const MAX_PAGES = 9;
 const VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 }; // iPhone-class width, the most common mobile breakpoint
 const MAX_IMAGE_HEIGHT = 6000; // cap full-page screenshot height before sending to Claude
-// Kept tight on purpose: this route runs under a 60s serverless budget
-// shared with the Claude vision call, and up to 5 navigations happen here.
+// Kept tight on purpose: this route runs under a shared serverless budget
+// with the Claude vision call(s), and up to 9 navigations happen here.
 const NAV_TIMEOUT_MS = 10000;
 
 export type CapturedMediaType =
@@ -139,6 +140,29 @@ async function gotoAndSettle(page: Page, url: string): Promise<void> {
   await page.waitForTimeout(SETTLE_MS);
 }
 
+// Production incident (2026-07-13): a portfolio's case study pages came
+// back as walls of text with large blank gaps where product screenshots
+// should be, and Claude correctly reported not seeing any UI, because
+// there genuinely wasn't any in the capture. The site reveals images via
+// scroll-triggered animations (IntersectionObserver / Framer Motion
+// whileInView / lazy-loaded <img>), and a fullPage screenshot renders the
+// entire page in one shot with no real scroll pass, so anything gated
+// behind "has this scrolled into view yet" never fires. Scrolling down in
+// viewport-sized steps (then back to top) before the screenshot triggers
+// those the same way an actual visitor would. Capped at 30 steps so a
+// pathological infinite-scroll page can't blow up capture time.
+async function revealLazyContent(page: Page): Promise<void> {
+  const viewportHeight = page.viewportSize()?.height ?? VIEWPORT.height;
+  const pageHeight = await page.evaluate(() => document.body.scrollHeight);
+  const steps = Math.min(30, Math.ceil(pageHeight / viewportHeight));
+  for (let i = 1; i <= steps; i++) {
+    await page.evaluate((y) => window.scrollTo(0, y), i * viewportHeight);
+    await page.waitForTimeout(150);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(200);
+}
+
 function normalizeUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
@@ -209,6 +233,7 @@ export async function captureUrlScreenshots(
     const page = await context.newPage();
 
     await gotoAndSettle(page, base.toString());
+    await revealLazyContent(page);
 
     const homeShot = await resizeScreenshot(
       await page.screenshot({ fullPage: true, type: "png" })
@@ -252,6 +277,7 @@ export async function captureUrlScreenshots(
     for (const link of subLinks) {
       try {
         await gotoAndSettle(page, link);
+        await revealLazyContent(page);
         const shot = await resizeScreenshot(
           await page.screenshot({ fullPage: true, type: "png" })
         );

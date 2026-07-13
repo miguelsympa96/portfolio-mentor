@@ -291,6 +291,35 @@ const caseStudiesTool: Anthropic.Tool = {
   },
 };
 
+// Used instead of caseStudiesTool whenever the URL-capture path gives us a
+// known list of subpages (one Claude call per subpage, in parallel) rather
+// than one call writing every case study at once. Production incident
+// (2026-07-13): even after splitting core vs. case studies, a portfolio
+// with 5 case studies plus per-action text suggestions made the combined
+// case_studies response neither finish nor fail validation within a 260s
+// budget, Vercel killed the function outright. The response size for that
+// single call scales with case study count x suggestion richness with no
+// ceiling; a call per case study keeps each individual response small
+// regardless of how many case studies or how detailed the suggestions are.
+const singleCaseStudyProperties = {
+  is_case_study: {
+    type: "boolean",
+    description:
+      "true si esta página es un proyecto o case study individual con su propio problema/proceso/resultado. false si es una página genérica (home, about, contacto, builds, blog) que no debería tratarse como case study propio.",
+  },
+  ...caseStudiesProperties.case_studies.items.properties,
+};
+
+const singleCaseStudyTool: Anthropic.Tool = {
+  name: "submit_case_study",
+  description: "Entrega el análisis detallado de UN case study individual del portfolio.",
+  input_schema: {
+    type: "object",
+    properties: singleCaseStudyProperties,
+    required: ["is_case_study", "name", "recommendation", "problem", "why_it_matters", "fixes"],
+  },
+};
+
 function dataUrlToCapturedImage(dataUrl: string): CapturedImage {
   const match = dataUrl.match(/^data:(image\/\w+|application\/pdf);base64,(.+)$/);
   if (!match) {
@@ -333,6 +362,13 @@ function findCaseStudiesIssue(input: Record<string, unknown>): string | null {
   if (!Array.isArray(input.case_studies) || input.case_studies.length === 0) {
     return "case_studies vacío";
   }
+  return null;
+}
+
+function findSingleCaseStudyIssue(input: Record<string, unknown>): string | null {
+  if (typeof input.is_case_study !== "boolean") return "is_case_study ausente";
+  if (typeof input.name !== "string" || !input.name) return "name ausente";
+  if (!Array.isArray(input.fixes)) return "fixes ausente";
   return null;
 }
 
@@ -599,6 +635,22 @@ export async function POST(req: NextRequest) {
     });
     const hasMobileCapture = capturedImages.some((img) => img.viewport === "mobile");
 
+    // One Claude call per subpage instead of one call writing every case
+    // study (see singleCaseStudyTool above). Only possible on the automated
+    // URL-capture path, where captures are [home desktop, mobile?, ...
+    // subpages] in a known order, each subpage image is a distinct case
+    // study candidate. Manual uploads/PDF have no such structure (the
+    // candidate just attaches N arbitrary images), so that path keeps the
+    // one-call-writes-everything approach as a fallback.
+    const subpageImageIndexes =
+      url && !usedFallback
+        ? capturedImages
+            .map((img, index) => ({ img, index }))
+            .filter(({ img }) => img.viewport === "desktop")
+            .slice(1)
+            .map(({ index }) => index)
+        : [];
+
     const sharedContextLines = [
       seniority
         ? `Nivel de seniority objetivo del candidato: ${SENIORITY_LABELS[seniority]}.`
@@ -641,22 +693,65 @@ export async function POST(req: NextRequest) {
       "Responde exclusivamente llamando a la herramienta submit_case_studies.",
     ].filter((line): line is string => !!line);
 
-    // Two calls in parallel instead of one giant response: production
-    // incidents (2026-07-13) showed that asking Claude to write semaphore +
-    // categories + strengths + key_risks + up to 5 detailed case studies in
-    // a single tool call was unreliable, two failures in a row with
-    // different fields coming back broken even after raising max_tokens.
-    // Splitting means each call's structured output is much smaller (so
-    // less likely to have a malformed field anywhere), and the case-study
-    // cap can go up (real portfolios commonly carry 3-8) without
-    // reintroducing that risk. Runs concurrently so wall-clock time is
-    // bounded by the slower of the two, not their sum — the cost is a
-    // second full vision pass over the same images, paid in API cost, not
-    // extra wait time.
+    function buildSingleCaseStudyContextLines(captureIndex: number): string[] {
+      return [
+        ...sharedContextLines,
+        `Analiza en profundidad SOLO la Captura ${captureIndex + 1} (identificada en el texto que precede a esa imagen), tratándola como un case study o proyecto individual. Usa el resto de las capturas únicamente como contexto de comparación, por ejemplo para decidir si el orden o el nivel de craft de esta encajan con el resto del portfolio, pero no escribas sobre ninguna otra captura ni devuelvas más de un case study.`,
+        "Si la Captura indicada no es realmente un case study o proyecto individual sino una página genérica (about, contacto, builds, blog, o la propia home), responde is_case_study: false y rellena el resto de campos brevemente explicando por qué, por ejemplo 'Esta es la página de about, no un case study'.",
+        "Da una recomendación concreta (mantener / reordenar / ampliar / cortar) con la razón específica. Si hay varios problemas distintos, sepáralos en elementos individuales de 'fixes' en vez de fundirlos en una sola frase larga.",
+        "Revisa explícitamente si hay capturas o mockups del producto real (no solo texto o fotos del equipo): si las hay, evalúa su calidad visual como parte de craft (¿se ven pulidas y profesionales, con UI consistente y de alta fidelidad, o rotas, pixeladas, con placeholders tipo 'Lorem ipsum' o inconsistentes entre pantallas?) y cítalo con algo concreto que veas. Si no hay ninguna captura de producto en la evidencia que se te dio, dilo explícitamente como 'no veo capturas del producto para este case study en las imágenes disponibles' en vez de asumir que no existen en el portfolio real: puede que simplemente no se capturaron (algunas webs revelan imágenes al hacer scroll, si la captura muestra huecos en blanco sospechosamente grandes, es más probable que sea un fallo de captura que la ausencia real de UI).",
+        "Responde exclusivamente llamando a la herramienta submit_case_study.",
+      ].filter((line): line is string => !!line);
+    }
+
+    // Core verdict + case studies run in parallel, and case studies itself
+    // is now one call PER subpage (not one call writing all of them) when
+    // the URL-capture path gives us a known subpage list. Production
+    // incident (2026-07-13): even after splitting core vs. case studies,
+    // a single case_studies call asked to write up to 5 detailed entries
+    // plus per-action text suggestions neither finished nor failed
+    // validation within a 260s budget, Vercel killed the function outright.
+    // That response's size scales with case study count x suggestion
+    // richness with no ceiling; a call per case study keeps each individual
+    // response small regardless of portfolio size, and a slow/failed case
+    // study no longer sinks the other ones (graceful degradation instead of
+    // all-or-nothing). Manual uploads/PDF have no known per-page structure,
+    // so they fall back to the single bulk call.
     const FUNCTION_BUDGET_MS = maxDuration * 1000;
     const MIN_RETRY_BUDGET_MS = 90_000; // a call has measured as slow as ~170s
+    const usePerCaseStudyCalls = subpageImageIndexes.length > 0;
 
-    const [coreResult, caseStudiesResult] = await Promise.all([
+    const caseStudyCallPromises = usePerCaseStudyCalls
+      ? subpageImageIndexes.map((captureIndex) =>
+          callEvaluationTool({
+            anthropic,
+            tool: singleCaseStudyTool,
+            system: rubric,
+            contextLines: buildSingleCaseStudyContextLines(captureIndex),
+            imageBlocks,
+            maxTokens: 3000,
+            findIssue: findSingleCaseStudyIssue,
+            requestStartedAt,
+            functionBudgetMs: FUNCTION_BUDGET_MS,
+            minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
+          })
+        )
+      : [
+          callEvaluationTool({
+            anthropic,
+            tool: caseStudiesTool,
+            system: rubric,
+            contextLines: caseStudiesContextLines,
+            imageBlocks,
+            maxTokens: 8000,
+            findIssue: findCaseStudiesIssue,
+            requestStartedAt,
+            functionBudgetMs: FUNCTION_BUDGET_MS,
+            minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
+          }),
+        ];
+
+    const [coreResult, ...caseStudyResults] = await Promise.all([
       callEvaluationTool({
         anthropic,
         tool: jobDescription ? coreEvaluationToolWithJobFit : coreEvaluationTool,
@@ -669,24 +764,42 @@ export async function POST(req: NextRequest) {
         functionBudgetMs: FUNCTION_BUDGET_MS,
         minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
       }),
-      callEvaluationTool({
-        anthropic,
-        tool: caseStudiesTool,
-        system: rubric,
-        contextLines: caseStudiesContextLines,
-        imageBlocks,
-        maxTokens: 8000,
-        findIssue: findCaseStudiesIssue,
-        requestStartedAt,
-        functionBudgetMs: FUNCTION_BUDGET_MS,
-        minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
-      }),
+      ...caseStudyCallPromises,
     ]);
 
-    if (!coreResult.input || !caseStudiesResult.input) {
+    let caseStudies: Record<string, unknown>[] = [];
+    let caseStudiesIssue: string | null = null;
+
+    if (usePerCaseStudyCalls) {
+      const failedCount = caseStudyResults.filter((r) => !r.input).length;
+      if (failedCount > 0) {
+        console.error(`${failedCount} of ${caseStudyResults.length} single-case-study calls failed`);
+      }
+      caseStudies = caseStudyResults
+        .map((r) => r.input)
+        .filter((input): input is Record<string, unknown> => !!input && input.is_case_study !== false)
+        .map((input) => {
+          const clone = { ...input };
+          delete clone.is_case_study;
+          return clone;
+        });
+      if (caseStudies.length === 0) {
+        caseStudiesIssue =
+          caseStudyResults.map((r) => r.lastIssue).filter(Boolean).join(" | ") || "case_studies vacío";
+      }
+    } else {
+      const bulkResult = caseStudyResults[0];
+      if (bulkResult.input) {
+        caseStudies = bulkResult.input.case_studies as Record<string, unknown>[];
+      } else {
+        caseStudiesIssue = bulkResult.lastIssue;
+      }
+    }
+
+    if (!coreResult.input || caseStudies.length === 0) {
       const issues = [
         !coreResult.input ? `veredicto general: ${coreResult.lastIssue}` : null,
-        !caseStudiesResult.input ? `case studies: ${caseStudiesResult.lastIssue}` : null,
+        caseStudies.length === 0 ? `case studies: ${caseStudiesIssue}` : null,
       ]
         .filter(Boolean)
         .join(" | ");
@@ -698,7 +811,7 @@ export async function POST(req: NextRequest) {
 
     const normalized = normalizeEvaluation({
       ...coreResult.input,
-      case_studies: caseStudiesResult.input.case_studies,
+      case_studies: caseStudies,
     }) as EvaluationResult;
 
     // Benchmark: only for a real, explicit seniority bucket (not one merely

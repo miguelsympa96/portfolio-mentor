@@ -2,7 +2,15 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { EvaluationResult } from "@/lib/types";
-import { saveSession, loadSession, clearSession } from "@/lib/session";
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  savePendingJob,
+  loadPendingJob,
+  clearPendingJob,
+  type PendingJob,
+} from "@/lib/session";
 import { HomeScreen } from "./components/HomeScreen";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { LoadingScreen } from "./components/LoadingScreen";
@@ -63,6 +71,19 @@ export default function Home() {
       setView(saved.view);
     }
     setHydrated(true);
+
+    // A reload or a reopened tab shouldn't lose an evaluation that's still
+    // running server-side: resume polling it instead of dropping the user
+    // back on an earlier screen while the job finishes for nobody.
+    const pending = loadPendingJob();
+    if (pending) {
+      setError(null);
+      if (pending.kind === "rescan" && saved?.result) {
+        setPreviousResult(saved.result);
+      }
+      setView("loading");
+      resumeEvaluationJob(pending);
+    }
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -119,7 +140,7 @@ export default function Home() {
     }
   }
 
-  async function runEvaluation(): Promise<EvaluationResult> {
+  async function runEvaluation(kind: "submit" | "rescan"): Promise<EvaluationResult> {
     const res = await fetch("/api/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -135,7 +156,39 @@ export default function Home() {
     if (!res.ok) {
       throw new Error(data.error || t.settings.genericError);
     }
-    return pollEvaluationJob(data.jobId as string);
+    const jobId = data.jobId as string;
+    savePendingJob({ jobId, startedAt: Date.now(), kind });
+    try {
+      const result = await pollEvaluationJob(jobId);
+      clearPendingJob();
+      return result;
+    } catch (err) {
+      clearPendingJob();
+      throw err;
+    }
+  }
+
+  // Mirrors handleSubmit/handleRescan's success and error handling, but for
+  // a job that was already kicked off before a reload or tab close, see the
+  // hydration effect above.
+  async function resumeEvaluationJob(pending: PendingJob) {
+    try {
+      const data = await pollEvaluationJob(pending.jobId);
+      clearPendingJob();
+      setResult(data);
+      if (pending.kind === "rescan") {
+        setResolvedActions(new Set());
+        setImproveStartStep(0);
+      }
+      setView("result");
+      playCompletionSound();
+      flashTitleUntilFocused(t.loading.readyTitle);
+    } catch (err) {
+      clearPendingJob();
+      setPreviousResult(null);
+      setError(err instanceof Error ? err.message : t.settings.unknownError);
+      setView("settings");
+    }
   }
 
   // Cosmetic only, never blocks or affects the real evaluation: grabs
@@ -175,7 +228,7 @@ export default function Home() {
     setPreviousResult(null);
     setView("loading");
     try {
-      const data = await runEvaluation();
+      const data = await runEvaluation("submit");
       setResult(data);
       setView("result");
       playCompletionSound();
@@ -197,7 +250,7 @@ export default function Home() {
     setPreviousResult(result);
     setView("loading");
     try {
-      const data = await runEvaluation();
+      const data = await runEvaluation("rescan");
       setResult(data);
       setResolvedActions(new Set());
       setImproveStartStep(0);

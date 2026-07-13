@@ -30,7 +30,7 @@ export function stepEstimate(
     if (!cat) return null;
     return {
       impact: categoryImpact(cat.key, cat.score),
-      time: categoryTimeEstimate(cat.key, !!cat.fix.rewrite),
+      time: categoryTimeEstimate(cat.key, cat.fix.actions.some((a) => !!a.suggestion)),
     };
   }
   if (step.kind === "casestudy") {
@@ -58,7 +58,7 @@ export function stepActionCount(result: EvaluationResult, step: StepDef): number
   if (step.kind === "priority") {
     const cat = priorityCategory(result);
     if (!cat) return 0;
-    return cat.fix.actions.length + (cat.fix.rewrite ? 1 : 0);
+    return cat.fix.actions.length;
   }
   if (step.kind === "casestudy") {
     return result.caseStudies[step.index]?.fixes.length ?? 0;

@@ -116,7 +116,7 @@ export const en: Dictionary = {
     problemLabel: "Problem",
     whyLabel: "Why it matters",
     howToFixLabel: "How to fix it",
-    applyRewrite: "Apply the suggested text change",
+    suggestionLabel: "Suggestion",
     rewriteBefore: "Before",
     rewriteAfter: "After",
     caseStudyLabel: (n) => `Case study #${n}`,

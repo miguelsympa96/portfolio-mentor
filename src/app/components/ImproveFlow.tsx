@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { EvaluationResult } from "@/lib/types";
+import type { EvaluationResult, TextSuggestion } from "@/lib/types";
 import {
   buildSteps,
   priorityCategory,
@@ -56,6 +56,36 @@ function RewriteBlock({ before, after, t }: { before: string; after: string; t: 
         <span className="font-semibold text-accent-green">{t.improve.rewriteAfter}: </span>
         {after}
       </p>
+    </div>
+  );
+}
+
+// Collapsed by default, same reasoning as WhyItMatters: the suggestion is
+// the single most useful thing on the card (a ready-to-use text instead of
+// an instruction to write one yourself), but showing it inline for every
+// action at once would turn the card back into a wall of text. The
+// indentation (ml-[26px]) lines up under the checkbox label above it
+// (size-4 checkbox + gap-2.5 = 26px).
+function SuggestionToggle({ suggestion, t }: { suggestion: TextSuggestion; t: Dictionary }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ml-[26px] mt-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-[12px] font-medium text-accent-green"
+      >
+        {t.improve.suggestionLabel}
+        <ChevronIcon className={`size-3 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open &&
+        (suggestion.before ? (
+          <RewriteBlock before={suggestion.before} after={suggestion.after} t={t} />
+        ) : (
+          <p className="mt-2 rounded-lg bg-[#eef3ee] px-3 py-2 text-[13px] leading-relaxed text-ink">
+            {suggestion.after}
+          </p>
+        ))}
     </div>
   );
 }
@@ -319,15 +349,9 @@ export function ImproveFlow({
           {step.kind === "priority" && topFix && topFixCategory && (() => {
             const entries: ChecklistEntry[] = topFix.fix.actions.map((action, i) => ({
               key: actionKey(fullIndex, i),
-              label: action,
+              label: action.text,
+              extra: action.suggestion ? <SuggestionToggle suggestion={action.suggestion} t={t} /> : undefined,
             }));
-            if (topFix.fix.rewrite) {
-              entries.push({
-                key: actionKey(stepIndex, topFix.fix.actions.length),
-                label: t.improve.applyRewrite,
-                extra: <RewriteBlock before={topFix.fix.rewrite.before} after={topFix.fix.rewrite.after} t={t} />,
-              });
-            }
             return (
               <>
                 <div className="flex items-center justify-between gap-3">
@@ -364,7 +388,8 @@ export function ImproveFlow({
             const isGood = cs.recommendation === "mantener";
             const entries: ChecklistEntry[] = cs.fixes.map((fix, i) => ({
               key: actionKey(fullIndex, i),
-              label: fix,
+              label: fix.text,
+              extra: fix.suggestion ? <SuggestionToggle suggestion={fix.suggestion} t={t} /> : undefined,
             }));
             return (
               <>

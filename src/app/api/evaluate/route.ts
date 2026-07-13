@@ -45,6 +45,40 @@ const SENIORITY_LABELS: Record<string, string> = {
   staff: "Staff / Principal",
 };
 
+// Shared by category fixes and case study fixes: one independently
+// checkable action item, with an optional concrete text suggestion. The
+// user should never have to invent the actual wording themselves when the
+// fix involves writing or rewriting something, that's the whole point of
+// asking a senior recruiter for help instead of a generic checklist.
+const actionItemProperty = {
+  type: "object",
+  properties: {
+    text: {
+      type: "string",
+      description:
+        "Instrucción corta y concreta en imperativo, referenciando algo específico visto en las capturas.",
+    },
+    suggestion: {
+      type: "object",
+      description:
+        "Propuesta de texto lista para copiar y pegar, en la voz y vocabulario del candidato (imita cómo escribe en sus propias capturas, su nivel de formalidad, sus muletillas). Inclúyela SIEMPRE que la acción implique escribir o reescribir texto, que es la gran mayoría de los casos: titulares, overview, bullets de scope, microcopy, bios. Omite este campo SOLO si la acción es puramente estructural y no involucra ningún texto (ej. 'reordena estos dos proyectos', 'añade una captura de producto', 'corta este case study'). Escribe de forma natural y humana, como lo haría la propia persona: nunca uses guion largo (—), nunca punto y coma, varía el ritmo y la longitud de las frases, evita muletillas genéricas de IA ('en el mundo acelerado de hoy', 'no se trata solo de X, sino de Y').",
+      properties: {
+        before: {
+          type: "string",
+          description:
+            "Inclúyelo SOLO si la sugerencia reemplaza una frase puntual que ya existe: cítala tal cual aparece. Omite este campo si la sugerencia es texto nuevo sin una frase concreta que reemplazar (ej. un overview entero escrito desde cero).",
+        },
+        after: {
+          type: "string",
+          description: "El texto propuesto, listo para usar tal cual, sin que el candidato tenga que redactarlo.",
+        },
+      },
+      required: ["after"],
+    },
+  },
+  required: ["text"],
+};
+
 const fixProperty = {
   type: "object",
   description:
@@ -52,19 +86,11 @@ const fixProperty = {
   properties: {
     actions: {
       type: "array",
-      items: { type: "string" },
+      minItems: 1,
+      maxItems: 3,
+      items: actionItemProperty,
       description:
-        "1-3 acciones concretas y distintas, en imperativo, referenciando algo concreto visto en las capturas. Si solo hay un problema real, un array de un solo elemento.",
-    },
-    rewrite: {
-      type: "object",
-      description:
-        "Incluir SOLO si el fix es un cambio de copy/texto concreto: la frase original tal como aparece y una propuesta de reemplazo que preserve la voz y vocabulario del candidato. Omitir este campo si el fix no es de copy (ej. 'añade una métrica', 'reordena los case studies').",
-      properties: {
-        before: { type: "string", description: "Frase original, citada tal cual aparece." },
-        after: { type: "string", description: "Frase de reemplazo sugerida." },
-      },
-      required: ["before", "after"],
+        "1-3 acciones concretas y distintas. Si solo hay un problema real, un array de un solo elemento.",
     },
   },
   required: ["actions"],
@@ -192,7 +218,7 @@ const caseStudiesProperties = {
           type: "array",
           minItems: 1,
           maxItems: 3,
-          items: { type: "string" },
+          items: actionItemProperty,
           description:
             "1-3 acciones concretas, distintas y específicas que el candidato puede aplicar hoy mismo a este case study. Cada elemento debe ser un problema/acción diferente (no dividas una misma idea en varias frases) — si solo hay un problema real, devuelve un array de un solo elemento.",
         },
@@ -764,12 +790,14 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         whyItMatters: "(Ejemplo) En 10 segundos necesito saber tu rol y tu nivel, no el nombre del proyecto.",
         fix: {
           actions: [
-            "(Ejemplo) Reescribe el titular del hero para que comunique el resultado del proyecto, no solo su nombre.",
+            {
+              text: "(Ejemplo) Reescribe el titular del hero para que comunique el resultado del proyecto, no solo su nombre.",
+              suggestion: {
+                before: "(Ejemplo) 'Proyecto Alpha: rediseño de checkout'",
+                after: "(Ejemplo) 'Cómo rediseñé el checkout y subí la conversión un 18%'",
+              },
+            },
           ],
-          rewrite: {
-            before: "(Ejemplo) 'Proyecto Alpha: rediseño de checkout'",
-            after: "(Ejemplo) 'Cómo rediseñé el checkout y subí la conversión un 18%'",
-          },
         },
       },
       {
@@ -779,7 +807,12 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         whyItMatters: "(Ejemplo) Sin el 'por qué' no puedo distinguir criterio de ejecución.",
         fix: {
           actions: [
-            "(Ejemplo) Añade un subtítulo 'Por qué' antes de cada decisión clave de diseño, explicando la alternativa que descartaste.",
+            {
+              text: "(Ejemplo) Añade un subtítulo 'Por qué' antes de cada decisión clave de diseño, explicando la alternativa que descartaste.",
+              suggestion: {
+                after: "(Ejemplo) 'Por qué: descarté un modal de confirmación porque añadía un paso extra sin reducir errores reales, en su lugar valida en línea mientras el usuario escribe.'",
+              },
+            },
           ],
         },
       },
@@ -790,8 +823,8 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         whyItMatters: "(Ejemplo) Sin números, esto se siente como ejecución, no como ownership.",
         fix: {
           actions: [
-            "(Ejemplo) Pregúntate si mediste esto tú, te lo reportaron, o es una estimación.",
-            "(Ejemplo) Si no hay cifra exacta, usa un proxy cualitativo y etiquétalo como 'Estimado'.",
+            { text: "(Ejemplo) Pregúntate si mediste esto tú, te lo reportaron, o es una estimación." },
+            { text: "(Ejemplo) Si no hay cifra exacta, usa un proxy cualitativo y etiquétalo como 'Estimado'." },
           ],
         },
       },
@@ -801,11 +834,15 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         problem: "(Ejemplo) El texto usa 'nosotros' con frecuencia, sin desglosar tu contribución individual.",
         whyItMatters: "(Ejemplo) No puedo saber qué hiciste tú y qué hizo el equipo.",
         fix: {
-          actions: ["(Ejemplo) Reemplaza 'diseñamos' por frases que dejen clara tu contribución específica."],
-          rewrite: {
-            before: "(Ejemplo) 'Diseñamos un nuevo flujo de onboarding'",
-            after: "(Ejemplo) 'Propuse y prototipé el nuevo flujo de onboarding; el equipo lo validó conmigo en 2 rondas de test'",
-          },
+          actions: [
+            {
+              text: "(Ejemplo) Reemplaza 'diseñamos' por frases que dejen clara tu contribución específica.",
+              suggestion: {
+                before: "(Ejemplo) 'Diseñamos un nuevo flujo de onboarding'",
+                after: "(Ejemplo) 'Propuse y prototipé el nuevo flujo de onboarding, el equipo lo validó conmigo en 2 rondas de test'",
+              },
+            },
+          ],
         },
       },
       {
@@ -814,7 +851,9 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         problem: "(Ejemplo) Consistencia visual sólida entre las capturas revisadas.",
         whyItMatters: "(Ejemplo) El pulido visual da confianza, pero no compensa lo demás.",
         fix: {
-          actions: ["(Ejemplo) Revisa el espaciado entre secciones en móvil, hay saltos inconsistentes."],
+          actions: [
+            { text: "(Ejemplo) Revisa el espaciado entre secciones en móvil, hay saltos inconsistentes." },
+          ],
         },
       },
       {
@@ -823,7 +862,9 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         problem: "(Ejemplo) Cantidad de proyectos razonable; falta confirmar profundidad real de cada uno.",
         whyItMatters: "(Ejemplo) Prefiero 3 proyectos profundos a 6 superficiales.",
         fix: {
-          actions: ["(Ejemplo) Si tienes más de 4 proyectos, corta el más débil y profundiza en los 3 restantes."],
+          actions: [
+            { text: "(Ejemplo) Si tienes más de 4 proyectos, corta el más débil y profundiza en los 3 restantes." },
+          ],
         },
       },
     ],
@@ -833,14 +874,19 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         recommendation: "mantener",
         problem: "(Ejemplo) Buen gancho inicial y estructura clara. Configura ANTHROPIC_API_KEY para un análisis real.",
         whyItMatters: "(Ejemplo) Esto es lo que quiero ver primero.",
-        fixes: ["(Ejemplo) Añade la métrica de resultado en el primer scroll, no al final."],
+        fixes: [
+          {
+            text: "(Ejemplo) Añade la métrica de resultado en el primer scroll, no al final.",
+            suggestion: { after: "(Ejemplo) 'De 80 a 18 apelaciones al día tras el rediseño.'" },
+          },
+        ],
       },
       {
         name: "(Ejemplo) Case study 2",
         recommendation: "reordenar",
         problem: "(Ejemplo) Es tu proyecto más fuerte pero está tercero. Los reclutadores rara vez llegan tan abajo.",
         whyItMatters: "(Ejemplo) Si no lo veo en los primeros 2, asumo que no existe.",
-        fixes: ["(Ejemplo) Muévelo a primera posición."],
+        fixes: [{ text: "(Ejemplo) Muévelo a primera posición." }],
       },
       {
         name: "(Ejemplo) Case study 3",
@@ -848,8 +894,8 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
         problem: "(Ejemplo) Se queda en 'qué' se hizo, sin mostrar el proceso de decisión ni el impacto.",
         whyItMatters: "(Ejemplo) Sin proceso ni impacto, no puedo evaluar tu criterio.",
         fixes: [
-          "(Ejemplo) Añade 2-3 pantallas del proceso: research, iteraciones descartadas, decisión final.",
-          "(Ejemplo) Incluye al menos una métrica de resultado, aunque sea estimada.",
+          { text: "(Ejemplo) Añade 2-3 pantallas del proceso: research, iteraciones descartadas, decisión final." },
+          { text: "(Ejemplo) Incluye al menos una métrica de resultado, aunque sea estimada." },
         ],
       },
     ],

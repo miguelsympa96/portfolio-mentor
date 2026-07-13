@@ -95,7 +95,7 @@ export interface Dictionary {
     problemLabel: string;
     whyLabel: string;
     howToFixLabel: string;
-    applyRewrite: string;
+    suggestionLabel: string;
     rewriteBefore: string;
     rewriteAfter: string;
     caseStudyLabel: (n: number) => string;

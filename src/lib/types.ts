@@ -20,9 +20,22 @@ export interface JobFit {
   gaps: string[];
 }
 
+export interface TextSuggestion {
+  // Only present when the action replaces a specific existing phrase the
+  // candidate already wrote (quoted verbatim). Omitted for suggestions that
+  // are new text with nothing specific to quote as the "before" (e.g. a
+  // whole overview rewrite).
+  before?: string;
+  after: string;
+}
+
+export interface ActionItem {
+  text: string;
+  suggestion?: TextSuggestion;
+}
+
 export interface CategoryFix {
-  actions: string[];
-  rewrite?: { before: string; after: string };
+  actions: ActionItem[];
 }
 
 export interface CategoryEntry {
@@ -47,7 +60,7 @@ export interface CaseStudy {
   recommendation: CaseStudyRecommendation;
   problem: string;
   whyItMatters: string;
-  fixes: string[];
+  fixes: ActionItem[];
 }
 
 export interface VerdictHeadline {

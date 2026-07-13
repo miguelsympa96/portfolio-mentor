@@ -100,6 +100,25 @@ export default function Home() {
     (!!seniority || jobDescription.trim().length > 0) &&
     (url.trim().length > 0 || images.length > 0);
 
+  // The evaluation now runs as a background job (see /api/evaluate/route.ts):
+  // POST kicks it off and returns immediately with a jobId, so this polls a
+  // status endpoint instead of holding one fetch open for minutes.
+  const JOB_POLL_INTERVAL_MS = 3000;
+
+  async function pollEvaluationJob(jobId: string): Promise<EvaluationResult> {
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+      const res = await fetch(`/api/evaluate/status/${jobId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || t.settings.genericError);
+      }
+      if (data.status === "done") return data.result as EvaluationResult;
+      if (data.status === "error") throw new Error(data.error || t.settings.genericError);
+      // status === "running": keep polling.
+    }
+  }
+
   async function runEvaluation(): Promise<EvaluationResult> {
     const res = await fetch("/api/evaluate", {
       method: "POST",
@@ -116,7 +135,7 @@ export default function Home() {
     if (!res.ok) {
       throw new Error(data.error || t.settings.genericError);
     }
-    return data as EvaluationResult;
+    return pollEvaluationJob(data.jobId as string);
   }
 
   // Cosmetic only, never blocks or affects the real evaluation: grabs

@@ -30,12 +30,20 @@ export const runtime = "nodejs";
 // 2026-07-13, follow-up: moved the actual evaluation work off the request/
 // response cycle entirely (see runEvaluationJob + after() below), so this
 // number no longer bounds how long the user waits on one HTTP connection,
-// only how long the background job itself is allowed to run. Raised well
-// past the old 260s for margin; Vercel silently clamps to whatever the
-// plan allows (also bump vercel.json's functions.maxDuration to match,
-// that value wins over this one and silently overrides it if they drift
-// apart again).
-export const maxDuration = 800;
+// only how long the background job itself is allowed to run.
+//
+// 2026-07-14 correction: a value above the plan's ceiling does NOT get
+// silently clamped, it hard-fails the deploy ("maxDuration must be between
+// 1 and 300 seconds" on Hobby) with no visible error unless you go check
+// `vercel ls`/`vercel inspect` yourself — this is exactly what happened
+// here, production silently kept serving the previous deployment for
+// roughly an hour while every deploy after this file first introduced 800
+// failed outright. 300 is Hobby's hard ceiling (also bump vercel.json's
+// functions.maxDuration to match, that value wins over this one and
+// silently overrides it if they drift apart again). If more margin is ever
+// needed, that requires upgrading the Vercel plan first, not just raising
+// this number.
+export const maxDuration = 300;
 
 const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour

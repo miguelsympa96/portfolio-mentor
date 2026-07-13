@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { loadRubric } from "@/lib/rubric";
 import { CATEGORIES, type EvaluationResult } from "@/lib/types";
@@ -8,7 +7,6 @@ import { rateLimit, getClientIp } from "@/lib/rateLimit";
 import { compositeScore } from "@/lib/scoring";
 import { computePercentile } from "@/lib/benchmark";
 import { appendEvaluationRow, getEvaluationScores } from "@/lib/googleSheets";
-import { createRunningJob, completeJob, failJob } from "@/lib/jobStore";
 
 export const runtime = "nodejs";
 // QA finding: the Claude vision call alone (6 images + a large structured
@@ -22,28 +20,13 @@ export const runtime = "nodejs";
 // Production incident (2026-07-13): with up to 5 case studies captured in
 // one combined call, a single attempt measured ~160s, leaving almost no
 // room for the retry logic to ever actually retry within a 180s budget.
-// Raised to 260s, then the evaluation itself was split into parallel calls
-// (core verdict + one call per case study, see callEvaluationTool) to keep
-// each one's generation time well under budget regardless of case study
-// count.
-//
-// 2026-07-13, follow-up: moved the actual evaluation work off the request/
-// response cycle entirely (see runEvaluationJob + after() below), so this
-// number no longer bounds how long the user waits on one HTTP connection,
-// only how long the background job itself is allowed to run.
-//
-// 2026-07-14 correction: a value above the plan's ceiling does NOT get
-// silently clamped, it hard-fails the deploy ("maxDuration must be between
-// 1 and 300 seconds" on Hobby) with no visible error unless you go check
-// `vercel ls`/`vercel inspect` yourself — this is exactly what happened
-// here, production silently kept serving the previous deployment for
-// roughly an hour while every deploy after this file first introduced 800
-// failed outright. 300 is Hobby's hard ceiling (also bump vercel.json's
-// functions.maxDuration to match, that value wins over this one and
-// silently overrides it if they drift apart again). If more margin is ever
-// needed, that requires upgrading the Vercel plan first, not just raising
-// this number.
-export const maxDuration = 300;
+// Raised to 260s (also bump vercel.json's functions.maxDuration to match,
+// that value wins over this one and silently overrides it if they drift
+// apart again). The evaluation is now split into two parallel calls (core
+// verdict + case studies, see callEvaluationTool) specifically to keep
+// each one's generation time well under this budget even as the case
+// study cap goes up.
+export const maxDuration = 260;
 
 const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -587,50 +570,13 @@ export async function POST(req: NextRequest) {
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const jobId = randomUUID();
-
     if (!apiKey) {
       // Sin API key configurada: devolvemos una evaluación de ejemplo para
       // poder probar el flujo de UI de punta a punta. Se elimina en cuanto
-      // ANTHROPIC_API_KEY esté presente. Pasa igual por el job store para
-      // que el frontend (que siempre hace polling ahora) reciba el mismo
-      // contrato { jobId } sin importar el modo.
-      await completeJob(jobId, mockEvaluation(seniority, !!jobDescription) as unknown as EvaluationResult);
-      return NextResponse.json({ jobId }, { status: 202 });
+      // ANTHROPIC_API_KEY esté presente.
+      return NextResponse.json(mockEvaluation(seniority, !!jobDescription));
     }
 
-    // La evaluación real corre en segundo plano con after(): la respuesta al
-    // cliente vuelve de inmediato con el jobId, y el cliente hace polling a
-    // /api/evaluate/status/[jobId]. Esto separa "cuánto tarda la evaluación"
-    // de "cuánto tiempo aguanta una sola conexión HTTP abierta", que era la
-    // causa de los timeouts de Vercel de incidentes anteriores (ver
-    // runEvaluationJob más abajo).
-    await createRunningJob(jobId);
-    after(() =>
-      runEvaluationJob(jobId, { seniority, images, url, jobDescription, locale, requestStartedAt, apiKey })
-    );
-    return NextResponse.json({ jobId }, { status: 202 });
-  } catch (err) {
-    console.error(err);
-    const message = err instanceof Error ? err.message : "Error desconocido";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-async function runEvaluationJob(
-  jobId: string,
-  params: {
-    seniority: string;
-    images?: string[];
-    url?: string;
-    jobDescription?: string;
-    locale?: string;
-    requestStartedAt: number;
-    apiKey: string;
-  }
-): Promise<void> {
-  const { seniority, images, url, jobDescription, locale, requestStartedAt, apiKey } = params;
-  try {
     let capturedImages: CapturedImage[] = [];
     let usedFallback = false;
     let truncatedLinkCount = 0;
@@ -649,8 +595,12 @@ async function runEvaluationJob(
           capturedImages = images.map(dataUrlToCapturedImage);
           usedFallback = true;
         } else {
-          throw new Error(
-            "No pude cargar esa URL automáticamente (puede bloquear bots o requerir login). Sube capturas o un PDF de tu portfolio como alternativa."
+          return NextResponse.json(
+            {
+              error:
+                "No pude cargar esa URL automáticamente (puede bloquear bots o requerir login). Sube capturas o un PDF de tu portfolio como alternativa.",
+            },
+            { status: 422 }
           );
         }
       }
@@ -853,7 +803,10 @@ async function runEvaluationJob(
       ]
         .filter(Boolean)
         .join(" | ");
-      throw new Error(`Claude no devolvió una evaluación completa (${issues}). Prueba de nuevo.`);
+      return NextResponse.json(
+        { error: `Claude no devolvió una evaluación completa (${issues}). Prueba de nuevo.` },
+        { status: 502 }
+      );
     }
 
     const normalized = normalizeEvaluation({
@@ -878,11 +831,11 @@ async function runEvaluationJob(
       }
     }
 
-    await completeJob(jobId, normalized);
+    return NextResponse.json(normalized);
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : "Error desconocido";
-    await failJob(jobId, message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

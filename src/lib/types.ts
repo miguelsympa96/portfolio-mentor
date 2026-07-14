@@ -9,6 +9,8 @@ export const CATEGORIES = [
 
 export type CategoryKey = (typeof CATEGORIES)[number]["key"];
 
+export type Seniority = "junior" | "mid" | "senior" | "staff";
+
 export type Semaphore = "green" | "yellow" | "red";
 
 export type JobFitLevel = "alto" | "medio" | "bajo";
@@ -83,6 +85,12 @@ export interface EvaluationResult {
   caseStudies: CaseStudy[];
   jobFit?: JobFit;
   benchmark?: Benchmark;
+  // Only set when the candidate picked a level manually. Omitted when it was
+  // inferred from a job description instead, since that inference happens
+  // inside Claude's evaluation and isn't returned as a structured field —
+  // category weighting (see scoring.ts) falls back to the mid baseline in
+  // that case rather than guessing.
+  seniority?: Seniority;
   _mock?: boolean;
 }
 

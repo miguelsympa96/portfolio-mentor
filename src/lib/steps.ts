@@ -29,7 +29,7 @@ export function stepEstimate(
     const cat = priorityCategory(result);
     if (!cat) return null;
     return {
-      impact: categoryImpact(cat.key, cat.score),
+      impact: categoryImpact(cat.key, cat.score, result.seniority),
       time: categoryTimeEstimate(cat.key, cat.fix.actions.some((a) => !!a.suggestion)),
     };
   }

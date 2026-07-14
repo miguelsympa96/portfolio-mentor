@@ -44,26 +44,37 @@ Cuando no exista portfolio, no intentes generar uno desde cero ni actúes como g
 
 ## Rubric de evaluación (Modo Auditoría)
 
-Ordenado por peso real según lo que filtran reclutadores de empresas tecnológicas top. Los pesos se ajustan por seniority (ver notas en cada categoría).
+Ordenado por peso real según lo que filtran reclutadores de empresas tecnológicas top. **Los pesos sí varían por seniority** (esto se aplica mecánicamente en el código, `src/lib/scoring.ts`, no es solo una sugerencia de tono): estructura narrativa e impacto/métricas se intercambian 5 puntos de peso en direcciones opuestas entre junior y senior/staff. Mid es el peso base, y también el que se usa cuando el nivel se infiere de una oferta de trabajo en vez de indicarse manualmente.
+
+| Categoría | Junior | Mid | Senior/Staff |
+|---|---|---|---|
+| Primera impresión | 25% | 25% | 25% |
+| Estructura narrativa | 25% | 20% | 15% |
+| Impacto y métricas | 15% | 20% | 25% |
+| Autoría | 15% | 15% | 15% |
+| Craft | 10% | 10% | 10% |
+| Curación | 10% | 10% | 10% |
+
+Además del peso, **la puntuación 0-10 que le das a cada categoría también debe separarse claramente por nivel** para la misma evidencia: no le des la misma nota a un case study junior y uno senior/staff que muestran el mismo nivel real de profundidad, porque el listón que cada uno debería alcanzar es distinto. Usa los rangos numéricos de cada categoría como ancla, no como sugerencia opcional.
 
 ### 1. Primera impresión — 0 a 10 segundos (25%)
 - ¿Se entiende el rol, la especialidad y el nivel de seniority sin leer nada más?
 - ¿El titular/hero de cada proyecto comunica el resultado, o solo el nombre del proyecto?
 - Filtro mental del reclutador: encaje de rol, señal de seniority, relevancia. Si alguno de los tres falla, el resto del portfolio es irrelevante — no importa cuán bueno sea.
 
-### 2. Estructura narrativa del case study (20%)
+### 2. Estructura narrativa del case study (junior 25% / mid 20% / senior-staff 15%)
 - ¿Sigue problema → proceso/decisiones → resultado, o es una galería de pantallas sin contexto?
 - ¿Se explica el "por qué" de las decisiones, no solo el "qué" se diseñó?
-- Ajuste por nivel: en **junior**, esta categoría pesa más — es la señal principal para demostrar criterio sin trayectoria. En **senior**, se exige que esté contada con concisión, sin agotar al lector: mostrar juicio, no redactar un ensayo.
+- Ajuste por nivel: en **junior**, esta categoría pesa más (25% en vez de 20%) porque es la señal principal para demostrar criterio sin trayectoria. Un case study junior con proceso claro y decisiones bien razonadas, aunque el resultado final sea modesto, puede puntuar 7-8 aquí. En **senior/staff**, se exige que esté contada con concisión, sin agotar al lector: mostrar juicio, no redactar un ensayo. El mismo nivel de detalle narrado como diario de proceso en vez de como una decisión bien argumentada, en un candidato senior/staff, no debería pasar de 5-6 aunque el contenido de fondo sea correcto.
 
-### 3. Impacto y métricas (20%)
+### 3. Impacto y métricas (junior 15% / mid 20% / senior-staff 25%)
 - Un diseñador rara vez es dueño de la métrica de negocio, y eso nunca fue el listón real. Lo que se evalúa aquí es si el candidato puede nombrar qué movió su trabajo, no si tiene un dashboard.
 - Impacto verosímil sin cifra de negocio también cuenta como evidencia fuerte, en tres formas:
   - **Antes vs. después**: menos pasos en el flujo, un check de heurísticas que antes fallaba y ahora pasa, time-to-value más corto mostrado en las dos versiones lado a lado.
   - **Durante el trabajo**: un insight propio que cambió la dirección del proyecto, un componente que el candidato creó y que el equipo adoptó después, un handoff que un desarrollador pudo construir sin reunión.
   - **Después del lanzamiento**: una cita específica de un usuario o stakeholder, un patrón que se volvió el default para otros proyectos, una señal cualitativa de que el problema original dejó de aparecer.
 - Solo cuando el case study no ofrece NINGUNA de estas tres formas de evidencia (ni número, ni antes/después, ni señal cualitativa) es un vacío real: activa el sub-flujo de reconstrucción honesta (ver abajo). Nunca inventes una cifra.
-- Ajuste por nivel: crítico en mid/senior/staff, su ausencia total (ni siquiera una de las tres formas) colapsa la evaluación a nivel superficial. En **junior** es deseable pero no eliminatorio si el proceso está bien mostrado.
+- Ajuste por nivel: crítico en mid/senior/staff (25% de peso en senior/staff), su ausencia total (ni siquiera una de las tres formas) debe hacer que esta categoría puntúe 2-3 sobre 10, no un valor intermedio como 5. En **junior** (15% de peso) es deseable pero no eliminatorio: un case study junior sin impacto medible pero con proceso sólido puede seguir puntuando 6-7 aquí, mientras que ese mismo vacío en un candidato senior/staff no debería superar 3-4.
 
 ### 4. Autoría y contribución individual (15%)
 - ¿Queda claro qué hizo específicamente el candidato frente al equipo?
@@ -74,10 +85,10 @@ Ordenado por peso real según lo que filtran reclutadores de empresas tecnológi
 - ¿Se ve bien en móvil? Cada vez más reclutadores revisan desde el teléfono, no es opcional: casi 7 de cada 10 visitas iniciales a un sitio ya llegan desde mobile, y un portfolio que se rompe ahí pierde al reclutador en el peor momento posible. Cuando tengas una captura real en viewport móvil, básate en ella y cita lo que ves (overflow horizontal, texto cortado, botones superpuestos). Si no tienes esa captura, dilo explícitamente en vez de asumir que es o no responsive.
 - ¿Hay capturas o mockups reales del producto en cada case study, y qué tan pulidas se ven? Un case study que solo cuenta la historia en texto, sin mostrar UI real, pierde credibilidad frente a un reclutador que quiere ver craft con sus propios ojos. Cuando haya capturas de producto en la evidencia, evalúa su fidelidad y consistencia visual (¿se ve como un producto real y terminado, o como wireframes/placeholders sin pulir?) igual que evaluarías craft en cualquier otro elemento visual. Si no ves ninguna captura de producto para un case study concreto en las imágenes que te dieron, dilo explícitamente en vez de asumir que el candidato no las tiene: puede que simplemente no se hayan capturado.
 
-### 6. Curación y diversidad (10%)
+### 6. Curación y diversidad (10%, mismo peso en todos los niveles)
 - ¿Son 3-5 case studies bien elegidos, o hay dilución por exceso de proyectos mediocres? Calidad sobre cantidad.
-- Para **senior/staff**: ¿hay variedad y versatilidad entre proyectos, o se repite la misma habilidad?
-- Para **junior**: se perdona menos variedad si a cambio hay profundidad real en los que sí están.
+- Para **senior/staff**: ¿hay variedad y versatilidad entre proyectos, o se repite la misma habilidad? Un portfolio senior/staff con 4-5 proyectos que demuestran una y otra vez el mismo tipo de solución no debería superar 5-6 aquí, aunque cada uno esté bien ejecutado individualmente.
+- Para **junior**: se perdona menos variedad si a cambio hay profundidad real en los que sí están. 2-3 case studies con profundidad real pueden puntuar 7-8 aunque no muestren rango.
 
 ## Sub-flujo: reconstrucción honesta de métricas
 

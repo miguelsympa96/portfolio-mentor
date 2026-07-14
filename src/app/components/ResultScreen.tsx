@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CATEGORIES, type EvaluationResult } from "@/lib/types";
 import { buildSteps, priorityCategory, stepEstimate, stepResolvedFraction } from "@/lib/steps";
-import { compositeScore } from "@/lib/scoring";
+import { compositeScore, categoryWeight } from "@/lib/scoring";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import { AlertIcon, ArrowRightIcon, CheckIcon, FeedbackIcon, LinkedInIcon, WhatsAppIcon, XIcon } from "./icons";
@@ -339,7 +339,7 @@ export function ResultScreen({
                 {CATEGORIES.map((c) => (
                   <li key={c.key} className="flex items-center justify-between gap-3 text-[13px] text-ink">
                     <span>{t.categories[c.key].label}</span>
-                    <span className="font-mono text-[11px] text-ink-42">{c.weight}%</span>
+                    <span className="font-mono text-[11px] text-ink-42">{categoryWeight(c.key, result.seniority)}%</span>
                   </li>
                 ))}
               </ul>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { loadRubric } from "@/lib/rubric";
-import { CATEGORIES, type EvaluationResult } from "@/lib/types";
+import { CATEGORIES, type EvaluationResult, type Seniority } from "@/lib/types";
 import { captureUrlScreenshots, type CapturedImage } from "@/lib/capture";
 import { rateLimit, getClientIp } from "@/lib/rateLimit";
 import { compositeScore } from "@/lib/scoring";
@@ -813,6 +813,10 @@ export async function POST(req: NextRequest) {
       ...coreResult.input,
       case_studies: caseStudies,
     }) as EvaluationResult;
+    // Only ever a validated key here (see the 400 checks above), never one
+    // merely inferred from a job description — category weighting (see
+    // scoring.ts) falls back to the mid baseline without it.
+    if (seniority) normalized.seniority = seniority as Seniority;
 
     // Benchmark: only for a real, explicit seniority bucket (not one merely
     // inferred from a job description) so the comparison pool stays honest.
@@ -886,6 +890,7 @@ function mockEvaluation(seniority: string, withJobFit: boolean) {
 
   return {
     ...base,
+    seniority: SENIORITY_LABELS[seniority] ? (seniority as Seniority) : undefined,
     _mock: true,
     strengths: [
       "(Ejemplo) Configura ANTHROPIC_API_KEY para fortalezas reales basadas en tus capturas.",

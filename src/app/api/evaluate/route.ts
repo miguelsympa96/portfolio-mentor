@@ -796,6 +796,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Real incident (2026-07-14): a portfolio whose project cards all link
+    // out to external sites (the live product, an agency page, a press
+    // article) instead of to the candidate's own case-study writeup has zero
+    // internal subpages to capture, so Claude only ever sees the index page
+    // and, correctly per its instructions, refuses to invent case studies
+    // from a page with no problem/process/result narrative. "Prueba de
+    // nuevo" is actively misleading here, since retrying the same URL is
+    // deterministic and will fail identically every time — the fix is
+    // uploading case study screenshots directly, not trying again.
+    if (url && !usedFallback && !usePerCaseStudyCalls && caseStudies.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "No encontré páginas de case study propias en este portfolio: los enlaces de proyecto que detecté llevan a sitios externos (como el producto en vivo), no a una página tuya con el problema, proceso y resultado. Sube capturas de pantalla de tus case studies directamente, o de un PDF, en vez de la URL.",
+        },
+        { status: 422 }
+      );
+    }
+
     if (!coreResult.input || caseStudies.length === 0) {
       const issues = [
         !coreResult.input ? `veredicto general: ${coreResult.lastIssue}` : null,

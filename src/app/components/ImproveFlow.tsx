@@ -108,7 +108,7 @@ function ActionChecklist({
   t: Dictionary;
 }) {
   return (
-    <div className="mt-4 rounded-xl bg-background p-4">
+    <div className="mt-4 rounded-xl bg-background p-4 lg:mt-0">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-green">{t.improve.howToFixLabel}</p>
       <div className="mt-2 flex flex-col gap-1">
         {entries.map((entry) => {
@@ -292,7 +292,7 @@ export function ImproveFlow({
 
   return (
     <div className="relative flex min-h-screen flex-col items-center px-6 py-16 sm:py-24">
-      <main className="flex w-full max-w-[560px] flex-col gap-6">
+      <main className="flex w-full max-w-[560px] flex-col gap-6 lg:max-w-[920px]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <p className="label-mono">{t.improve.heading}</p>
@@ -319,7 +319,7 @@ export function ImproveFlow({
           </div>
         </div>
 
-        <div key={stepIndex} className="step-in rounded-2xl border border-ink-border bg-white p-6">
+        <div key={stepIndex} className="step-in rounded-2xl border border-ink-border bg-white p-6 lg:p-8">
           {step.kind === "jobfit" && result.jobFit && (
             <>
               <div className="flex items-center justify-between gap-3">
@@ -372,12 +372,14 @@ export function ImproveFlow({
                 </div>
                 <p className="mt-1.5 font-serif-heading text-[20px]">{topFixCategory.label}</p>
 
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-ink">{topFix.problem}</p>
-
-                <WhyItMatters text={topFix.whyItMatters} t={t} />
-
-                <ActionChecklist entries={entries} resolvedActions={resolvedActions} onToggle={toggleAction} t={t} />
+                <div className="mt-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-10">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
+                    <p className="mt-1 text-[13px] leading-relaxed text-ink">{topFix.problem}</p>
+                    <WhyItMatters text={topFix.whyItMatters} t={t} />
+                  </div>
+                  <ActionChecklist entries={entries} resolvedActions={resolvedActions} onToggle={toggleAction} t={t} />
+                </div>
 
                 {currentFullyResolved && currentName && (
                   <CompletionBanner name={currentName} impact={currentEstimate?.impact ?? 0} t={t} />
@@ -422,19 +424,26 @@ export function ImproveFlow({
                 </div>
                 <p className="mt-1.5 font-serif-heading text-[20px]">{cs.name}</p>
 
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-ink">{cs.problem}</p>
-
-                <WhyItMatters text={cs.whyItMatters} t={t} />
-
                 {isGood ? (
-                  <div className="mt-4 rounded-xl bg-[#eef3ee] p-4">
-                    <p className="text-[13px] leading-relaxed text-ink">
-                      {t.improve.caseStudyGoodMsg}
-                    </p>
-                  </div>
+                  <>
+                    <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
+                    <p className="mt-1 text-[13px] leading-relaxed text-ink">{cs.problem}</p>
+                    <WhyItMatters text={cs.whyItMatters} t={t} />
+                    <div className="mt-4 rounded-xl bg-[#eef3ee] p-4">
+                      <p className="text-[13px] leading-relaxed text-ink">
+                        {t.improve.caseStudyGoodMsg}
+                      </p>
+                    </div>
+                  </>
                 ) : (
-                  <ActionChecklist entries={entries} resolvedActions={resolvedActions} onToggle={toggleAction} t={t} />
+                  <div className="mt-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-10">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-42">{t.improve.problemLabel}</p>
+                      <p className="mt-1 text-[13px] leading-relaxed text-ink">{cs.problem}</p>
+                      <WhyItMatters text={cs.whyItMatters} t={t} />
+                    </div>
+                    <ActionChecklist entries={entries} resolvedActions={resolvedActions} onToggle={toggleAction} t={t} />
+                  </div>
                 )}
 
                 {!isGood && currentFullyResolved && currentName && (

@@ -125,9 +125,19 @@ export default function Home() {
   // POST kicks it off and returns immediately with a jobId, so this polls a
   // status endpoint instead of holding one fetch open for minutes.
   const JOB_POLL_INTERVAL_MS = 3000;
+  // Real incident (2026-07-15): a job got stuck at "running" and the client
+  // polled it for 15+ minutes straight, because nothing on this side ever
+  // gives up. The background function itself is capped at 300s, so once
+  // this much wall-clock time has passed since the job started, it cannot
+  // still legitimately be running, something silently killed it without
+  // reaching failJob, better to surface a real error than spin forever.
+  const JOB_MAX_WAIT_MS = 340_000;
 
-  async function pollEvaluationJob(jobId: string): Promise<EvaluationResult> {
+  async function pollEvaluationJob(jobId: string, startedAt: number = Date.now()): Promise<EvaluationResult> {
     for (;;) {
+      if (Date.now() - startedAt > JOB_MAX_WAIT_MS) {
+        throw new Error(t.settings.evaluationTimedOut);
+      }
       await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
       const res = await fetch(`/api/evaluate/status/${jobId}`);
       const data = await res.json();
@@ -173,7 +183,7 @@ export default function Home() {
   // hydration effect above.
   async function resumeEvaluationJob(pending: PendingJob) {
     try {
-      const data = await pollEvaluationJob(pending.jobId);
+      const data = await pollEvaluationJob(pending.jobId, pending.startedAt);
       clearPendingJob();
       setResult(data);
       if (pending.kind === "rescan") {

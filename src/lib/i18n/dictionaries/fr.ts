@@ -39,6 +39,7 @@ export const fr: Dictionary = {
     submit: "Analyser le portfolio",
     genericError: "Impossible d'évaluer le portfolio.",
     unknownError: "Erreur inconnue.",
+    evaluationTimedOut: "L'analyse prend trop de temps. Réessaie dans quelques minutes.",
   },
   loading: {
     heading: "Analyse de ton portfolio en cours...",

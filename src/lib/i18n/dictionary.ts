@@ -33,6 +33,7 @@ export interface Dictionary {
     submit: string;
     genericError: string;
     unknownError: string;
+    evaluationTimedOut: string;
   };
   loading: {
     heading: string;

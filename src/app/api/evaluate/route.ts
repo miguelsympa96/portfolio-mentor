@@ -658,7 +658,16 @@ async function runEvaluationJob(
       capturedImages = images.map(dataUrlToCapturedImage);
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    // Real incident (2026-07-15): a job sat at "running" for 15+ minutes
+    // with the client polling the whole time, because the SDK's default
+    // per-request timeout (10 minutes) is far longer than this function's
+    // own maxDuration (300s). A call that stalls on the network never throws
+    // a catchable error before Vercel just kills the whole process, so
+    // failJob never runs and the job store entry rots until its own TTL
+    // expires. 200s sits above every real attempt duration measured so far
+    // (up to ~170s) but well inside the budget, so a stall now surfaces as a
+    // normal, catchable timeout error instead of a silent hang.
+    const anthropic = new Anthropic({ apiKey, timeout: 200_000 });
     const rubric = loadRubric();
 
     const imageBlocks: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam | Anthropic.DocumentBlockParam)[] =

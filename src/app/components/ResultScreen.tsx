@@ -76,7 +76,7 @@ function ShareRow({ t }: { t: Dictionary }) {
   const twitterHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(t.result.shareQuestion)}&url=${encodeURIComponent(APP_URL)}`;
 
   return (
-    <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-6">
+    <div className="flex justify-center px-6 sm:fixed sm:inset-x-0 sm:bottom-6 sm:z-30">
       <div className="flex items-center gap-3 rounded-full border border-ink-border bg-white px-4 py-2.5 shadow-sm">
         <p className="hidden text-[13px] font-medium text-ink-42 sm:block">{t.result.shareQuestion}</p>
         <a
@@ -252,7 +252,7 @@ export function ResultScreen({
       : "text-[28px] sm:text-[34px]";
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center px-6 pb-28 pt-16 sm:pb-32 sm:pt-24">
+    <div className="relative flex min-h-screen flex-col items-center px-6 pb-10 pt-16 sm:pb-32 sm:pt-24">
       <main className="flex w-full max-w-[560px] flex-col items-center gap-6">
         {result._mock && (
           <div className="w-full rounded-xl bg-[#f7f0e6] px-4 py-2.5 text-center text-xs font-medium text-[#6b4d26]">
@@ -472,18 +472,24 @@ export function ResultScreen({
             </button>
           </div>
         </div>
+
+        {/* Share + feedback: in-flow and stacked on mobile so they can never
+            overlap the CTAs above (they used to both float at bottom-6 and
+            collide with each other and the page on narrow viewports); float
+            independently again from sm: up, where there's room for both. */}
+        <div className="mt-2 flex w-full flex-col items-center gap-3 sm:mt-0 sm:block sm:gap-0">
+          <ShareRow t={t} />
+
+          <button
+            type="button"
+            onClick={() => setFeedbackOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-ink-border bg-white px-4 py-2.5 text-[13px] font-medium text-ink shadow-sm hover:border-ink/30 sm:fixed sm:bottom-6 sm:right-6 sm:z-40"
+          >
+            <FeedbackIcon className="size-[15px]" />
+            {t.result.feedbackButton}
+          </button>
+        </div>
       </main>
-
-      <ShareRow t={t} />
-
-      <button
-        type="button"
-        onClick={() => setFeedbackOpen(true)}
-        className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-1.5 rounded-full border border-ink-border bg-white px-4 py-2.5 text-[13px] font-medium text-ink shadow-sm hover:border-ink/30"
-      >
-        <FeedbackIcon className="size-[15px]" />
-        {t.result.feedbackButton}
-      </button>
 
       <FeedbackModal
         open={feedbackOpen}
